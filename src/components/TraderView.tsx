@@ -12,7 +12,7 @@ import { bucket, mergeMarkers } from '../lib/candles';
 import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
 import type { Trade, TraderReceipts } from '../lib/types';
-import { compact, dateTime, day, mcap, pct, price, short, span, usd } from '../lib/format';
+import { compact, date, dateTime, day, mcap, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_URL } from '../lib/site';
 import { shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
@@ -74,9 +74,13 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
   }, [head, trades, series, token.priceUsd, p.pnl]);
   const runTone = toneOf(running);
   const rank = RANKS[rankOf(p.roi)];
+  const firstBuy = trades.find((t) => t.side === 'buy');
+  const lastSell = trades.filter((t) => t.side === 'sell').at(-1);
   const stats: Stat[] = [
     { k: 'Put in', v: usd(p.usdIn) },
     { k: 'Took out', v: usd(p.usdOut) },
+    { k: p.buys > 1 ? 'First buy' : 'Bought', v: firstBuy ? dateTime(firstBuy.ts) : '-' },
+    { k: p.sells > 1 ? 'Last sell' : 'Sold', v: lastSell ? dateTime(lastSell.ts) : 'Still holding' },
     { k: 'Bag now', v: usd(p.openValue) },
     { k: 'Trades', v: `${p.buys} buys · ${p.sells} sells` },
     { k: 'Realized', v: usd(p.realized, { signed: true }), tone: toneOf(p.realized) },
@@ -175,6 +179,11 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
           </div>
           <div className="relative mt-3">
             <ReplayChart candles={chart.candles} step={chart.step} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
+            {/* the time axis: the chart runs from launch to now */}
+            <div className="num mt-1 flex justify-between pr-14 text-[11px] text-muted sm:pr-16">
+              <span>Launched {date(token.createdAt ?? chart.candles[0]?.[0] ?? from)}</span>
+              <span>Now</span>
+            </div>
           </div>
 
           {done && (

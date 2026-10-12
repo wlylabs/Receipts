@@ -8,7 +8,7 @@ import { useStored } from '../hooks/useStored';
 import { KEYS, type Recent } from '../lib/game';
 import { pushRecent } from '../lib/recent';
 import type { BoardRow, TokenReceipts } from '../lib/types';
-import { pct, price, short, span, usd } from '../lib/format';
+import { date, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES } from '../lib/site';
 import { copyText } from '../lib/clipboard';
 import { toast } from '../lib/toast';
@@ -62,12 +62,16 @@ function TokenPage({ r }: { r: TokenReceipts }) {
         <Kv k="Mcap" v={usd(token.mcapUsd)} />
         <Kv k="Liquidity" v={usd(token.liquidityUsd)} />
         <Kv k="Vol 24h" v={usd(token.volume24hUsd)} />
-        <Kv k="Age" v={token.createdAt ? span(now - token.createdAt) : '-'} />
         <Kv k="ATH" v={price(r.ath.priceUsd)} />
         <a href={token.url} target="_blank" rel="noreferrer" className="ml-auto flex shrink-0 items-center gap-1 text-muted hover:text-ink">
           DexScreener <ArrowUpRight className="size-3.5" aria-hidden />
         </a>
       </dl>
+      {token.createdAt && (
+        <p className="num mt-2.5 text-[12.5px] text-muted">
+          Launched <span className="font-medium text-ink">{date(token.createdAt)}</span> · {span(now - token.createdAt)} ago to now
+        </p>
+      )}
 
 
       <section className="mt-6" aria-labelledby="board-title">
