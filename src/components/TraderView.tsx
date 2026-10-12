@@ -8,7 +8,7 @@ import { useStored } from '../hooks/useStored';
 import { useReplay } from '../hooks/useReplay';
 import { KEYS, RANKS, toneOf, type Recent } from '../lib/game';
 import { position, priceAt, rankOf } from '../lib/receipts';
-import { bucket } from '../lib/candles';
+import { bucket, mergeMarkers } from '../lib/candles';
 import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
 import type { Trade, TraderReceipts } from '../lib/types';
@@ -92,7 +92,16 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
   };
 
   const fileBase = `${r.owner.slice(0, 6)}-${token.symbol.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token'}`;
-  const markers: Marker[] = trades.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side }));
+  // one marker per candle, so trades close together do not pile up
+  const markers: Marker[] = useMemo(
+    () =>
+      mergeMarkers(
+        trades.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side })),
+        chart.candles,
+        chart.step,
+      ),
+    [trades, chart],
+  );
   const money = (n: number) => usd(n, { signed: true });
   const story = { buys: p.buys, sells: p.sells, usdIn: p.usdIn, pnl: p.pnl, roi: p.roi, realized: p.realized, unrealized: p.unrealized, openValue: p.openValue, missedUsd: p.missedUsd };
   const video: ReplayVideo = {
