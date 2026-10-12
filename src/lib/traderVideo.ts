@@ -5,10 +5,15 @@ import { position, priceAt, rankOf, supplyOf } from './receipts';
 import { bucket, mergeMarkers, type Candle } from './candles';
 import type { Trade, TraderReceipts } from './types';
 import { dateTime, day, mcap, price, short, usd } from './format';
-import type { ReplayVideo } from './replayVideo';
+import { timeOf, type Caption, type Pop, type ReplayVideo } from './replayVideo';
 
 /** Most candles drawn at once in a replay. */
 export const REPLAY_CANDLES = 80;
+
+/** Most of the run's big moments told in the story cut. */
+const MAX_BEATS = 5;
+/** Seconds of the story cut kept between two moments, so each can be read. */
+const BEAT_GAP = 1.4;
 
 export interface TraderStory {
   trades: Trade[];
@@ -81,7 +86,7 @@ export function traderStory(r: TraderReceipts): TraderStory {
     from,
     to,
     markers: markers.length <= 60 ? markers : [],
-    captions: trades.map((t) => ({ ts: t.ts, text: `${t.side === 'buy' ? 'Buy' : 'Sell'} ${usd(t.usd)} at ${at(t.priceUsd)}`, tone: t.side === 'buy' ? ('pos' as const) : ('neg' as const) })),
+    captions: [],
     pnlAt,
     pnl: p.pnl,
     money: (n) => usd(n, { signed: true }),
@@ -89,6 +94,91 @@ export function traderStory(r: TraderReceipts): TraderStory {
     label,
     date: day,
   };
+  video.pops = sellPops(trades, video.markers);
+  video.captions = beats(trades, video, at);
   const fileBase = `${r.owner.slice(0, 6)}-${token.symbol.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token'}`;
   return { trades, chart, markers, stats, rank, from, to, supply, scale, label, video, fileBase };
+}
+
+const times = (x: number) => `${x.toFixed(x >= 10 ? 0 : 1)}×`;
+
+/**
+ * What each sell made over what its tokens cost (the average buy so far, as the position works it
+ * out), summed per marker: a marker stands for every trade from it to the next.
+ */
+function sellPops(trades: readonly Trade[], markers: readonly Marker[]): Pop[] {
+  const sums = new Map<Marker, { made: number; cost: number }>();
+  trades.forEach((t, i) => {
+    if (t.side !== 'sell') return;
+    let m: Marker | undefined;
+    for (const k of markers) if (k.ts <= t.ts) m = k;
+    if (!m || m.kind !== 'sell') return;
+    const made = position(trades.slice(0, i + 1), t.priceUsd).realized - position(trades.slice(0, i), t.priceUsd).realized;
+    const sum = sums.get(m) ?? { made: 0, cost: 0 };
+    sum.made += made;
+    sum.cost += t.usd - made;
+    sums.set(m, sum);
+  });
+  return [...sums].map(([m, { made, cost }]) => {
+    const x = cost > 0 ? (cost + made) / cost : 0;
+    return { ts: m.ts, price: m.price, text: usd(made, { signed: true }) + (x >= 1.5 ? ` · ${times(x)}` : ''), tone: toneOf(made) };
+  });
+}
+
+/**
+ * The run's big moments, told in a few words: the way in, the biggest add, the best and worst it
+ * stood on paper, and the way out (or the bag still held). At most MAX_BEATS, the most telling
+ * first, and never two so close in the story cut that one can't be read.
+ */
+function beats(trades: readonly Trade[], v: ReplayVideo, at: (price: number) => string): Caption[] {
+  const buys = trades.filter((t) => t.side === 'buy');
+  const sells = trades.filter((t) => t.side === 'sell');
+  const first = buys[0];
+  if (!first) return [];
+  const all = position(trades, v.series.at(-1)?.[1] ?? first.priceUsd);
+  const cands: Caption[] = [{ ts: first.ts, text: `In at ${at(first.priceUsd)}`, tone: null }];
+
+  // the way out: all of it (what it made is the counter's to say), or the first bite with the
+  // rest still held
+  const out = all.open <= all.tokensIn * 0.01;
+  const lastSell = sells.at(-1);
+  if (out && lastSell) cands.push({ ts: lastSell.ts, text: `Out at ${at(lastSell.priceUsd)}`, tone: toneOf(all.realized) });
+  else {
+    const bite = sells[0];
+    if (bite) {
+      const i = trades.indexOf(bite);
+      const made = position(trades.slice(0, i + 1), bite.priceUsd).realized - position(trades.slice(0, i), bite.priceUsd).realized;
+      cands.push({ ts: bite.ts, text: `Took ${usd(bite.usd)} off at ${at(bite.priceUsd)}`, tone: toneOf(made) });
+    }
+    cands.push({ ts: v.to, text: `Still holding ${usd(all.openValue)}`, tone: null });
+  }
+
+  // the best and the worst it stood, from the first buy on, when they say more than the end does
+  let hi = { ts: 0, pnl: 0 };
+  let lo = { ts: 0, pnl: 0 };
+  for (const [ts] of v.series) {
+    if (ts < first.ts || ts > v.to) continue;
+    const pnl = v.pnlAt(ts);
+    if (pnl > hi.pnl) hi = { ts, pnl };
+    if (pnl < lo.pnl) lo = { ts, pnl };
+  }
+  const stake = Math.max(1e-9, position(trades.filter((t) => t.ts <= hi.ts), 0).usdIn);
+  const worth = 0.15 * all.usdIn;
+  if (hi.pnl > worth && hi.pnl - v.pnl > worth) {
+    const x = 1 + hi.pnl / stake;
+    cands.push({ ts: hi.ts, text: x >= 1.5 ? `Up ${times(x)} on paper` : `Up ${usd(hi.pnl)} on paper`, tone: 'pos' });
+  }
+  if (lo.pnl < -worth && v.pnl - lo.pnl > worth) cands.push({ ts: lo.ts, text: `Down ${usd(-lo.pnl)} at the low`, tone: 'neg' });
+
+  // the biggest buy after the first
+  const add = buys.slice(1).reduce<Trade | null>((b, t) => (!b || t.usd > b.usd ? t : b), null);
+  if (add) cands.push({ ts: add.ts, text: `Added ${usd(add.usd)} at ${at(add.priceUsd)}`, tone: null });
+
+  const kept: Caption[] = [];
+  const when = (c: Caption) => timeOf(Math.max(c.ts, v.from), v, 'story');
+  for (const c of cands) {
+    if (kept.length >= MAX_BEATS) break;
+    if (kept.every((k) => Math.abs(when(k) - when(c)) >= BEAT_GAP)) kept.push(c);
+  }
+  return kept.sort((a, b) => a.ts - b.ts);
 }
