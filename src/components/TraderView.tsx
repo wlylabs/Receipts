@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowUpRight, Download, FastForward, Link2, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowLeft, ArrowUpRight, FastForward, Link2, Loader2, RotateCcw } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { useReplay } from '../hooks/useReplay';
@@ -14,7 +14,7 @@ import { CHAINS } from '../lib/chains';
 import type { Trade, TraderReceipts } from '../lib/types';
 import { compact, dateTime, day, mcap, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_URL } from '../lib/site';
-import { saveFile, shareLink } from '../lib/clipboard';
+import { shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import { Failure, Loading } from './States';
@@ -46,7 +46,6 @@ export function TraderView({ address, ca }: { address: string; ca: string }) {
 
 /** The wallet's trades replaying on the chart, then the video. */
 function TraderReplay({ r }: { r: TraderReceipts }) {
-  const [saving, setSaving] = useState(false);
   // the replay starts as soon as the page opens
   const replay = useReplay(PLAY_MS, true);
 
@@ -130,35 +129,6 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     date: day,
   };
 
-  const save = async () => {
-    setSaving(true);
-    try {
-      const { cardPng } = await import('../lib/cardImage');
-      const blob = await cardPng({
-        kicker: `WALLET ${short(r.owner)}`,
-        symbol: token.symbol,
-        chainName: token.chainName,
-        pnl: usd(p.pnl, { signed: true }),
-        roi: p.roi === null ? null : pct(p.roi, { signed: true }),
-        tone: toneOf(p.pnl),
-        rank,
-        stats: stats.slice(0, 4),
-        candles: chart.candles,
-        step: chart.step,
-        entry,
-        from,
-        to,
-        markers: markers.length <= 60 ? markers : [],
-      });
-      const res = await saveFile(new File([blob], `${fileBase}.png`, { type: 'image/png' }));
-      if (res === 'saved') toast('Image saved.');
-    } catch {
-      toast('Couldn’t make the image. Try again.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   return (
     <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
       <header className="flex flex-wrap items-center gap-2 sm:gap-3">
@@ -207,13 +177,9 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
           {done && (
             <div className="mt-4 border-t border-line px-1 pt-4" role="status">
               <ResultCard kicker={`${short(r.owner)} on ${token.symbol}`} pnl={usd(p.pnl, { signed: true })} roi={p.roi === null ? 'no buys seen' : pct(p.roi, { signed: true })} tone={toneOf(p.pnl)} rank={rank} stats={stats}>
-                <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="mt-4 grid grid-cols-2 gap-2">
                   <button type="button" onClick={replay.play} className="btn btn-quiet">
                     <RotateCcw className="size-4" aria-hidden /> Replay
-                  </button>
-                  <button type="button" onClick={save} disabled={saving} className="btn btn-quiet">
-                    {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
-                    Image
                   </button>
                   <button type="button" onClick={share} className="btn btn-quiet">
                     <Link2 className="size-4" aria-hidden /> Share
