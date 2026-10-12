@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Copy, Download, FastForward, Link2, Loader2, Play, RotateCcw } from 'lucide-react';
+import { ArrowUpRight, Copy, Download, FastForward, Link2, Loader2, Play, RotateCcw, TrendingDown, TrendingUp } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { useReplay } from '../hooks/useReplay';
@@ -10,7 +10,7 @@ import { KEYS, RANKS, toneOf, type Recent } from '../lib/game';
 import { placement, priceAt, rankOf, simulate, type SimResult } from '../lib/receipts';
 import { pushRecent } from '../lib/recent';
 import { MAX_PAPER, PAPER_KEY, paperPnl, type PaperTrade } from '../lib/paper';
-import type { TokenReceipts } from '../lib/types';
+import type { BoardRow, TokenReceipts } from '../lib/types';
 import { compact, day, parseAmount, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_URL } from '../lib/site';
 import { copyText, saveFile, shareLink } from '../lib/clipboard';
@@ -507,18 +507,19 @@ function Scrub({
 
 /** Rows shown before "show all", so the page ends near the ticket. */
 const ROWS = 5;
+/** Wallets kept on each side of the board. */
+const SIDE = 10;
 
-/** The traders' board and this browser's own trades on the token, one tab at a time. */
+/** The traders' board (winners beside losers) and this browser's own trades on the token, one tab at a time. */
 function Board({ r, mine, children }: { r: TokenReceipts; mine: number; children: (more: boolean) => React.ReactNode }) {
-  const [tab, setTab] = useState<'top' | 'worst' | 'mine'>(mine > 0 ? 'mine' : 'top');
+  const [tab, setTab] = useState<'traders' | 'mine'>(mine > 0 ? 'mine' : 'traders');
   const [more, setMore] = useState(false);
-  const side = tab === 'mine' && mine === 0 ? 'top' : tab;
-  const all = side === 'top' ? r.board.slice(0, 10) : [...r.board].reverse().slice(0, 10);
-  const rows = more ? all : all.slice(0, ROWS);
-  const total = side === 'mine' ? mine : all.length;
+  const side = tab === 'mine' && mine === 0 ? 'traders' : tab;
+  const winners = r.board.filter((w) => w.pnl > 0).slice(0, SIDE);
+  const losers = r.board.filter((w) => w.pnl < 0).reverse().slice(0, SIDE);
+  const total = side === 'mine' ? mine : Math.max(winners.length, losers.length);
   const tabs = [
-    { id: 'top' as const, label: 'Top P&L' },
-    { id: 'worst' as const, label: 'Worst P&L' },
+    { id: 'traders' as const, label: 'Traders' },
     ...(mine > 0 ? [{ id: 'mine' as const, label: `Mine · ${mine}` }] : []),
   ];
   return (
@@ -532,75 +533,34 @@ function Board({ r, mine, children }: { r: TokenReceipts; mine: number; children
             {side === 'mine' ? 'Kept in this browser.' : `${r.board.length} wallets in the latest ${r.window.trades} trades (${span(r.window.to - r.window.from)}). Tap one to replay its trades.`}
           </p>
         </div>
-        <div role="tablist" aria-label="List" className="flex rounded-lg bg-subtle p-0.5">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              role="tab"
-              aria-selected={side === t.id}
-              onClick={() => {
-                setTab(t.id);
-                setMore(false);
-              }}
-              className={cx('h-8 rounded-md px-3 text-[12.5px] font-medium', side === t.id ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        {tabs.length > 1 && (
+          <div role="tablist" aria-label="List" className="flex rounded-lg bg-subtle p-0.5">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={side === t.id}
+                onClick={() => {
+                  setTab(t.id);
+                  setMore(false);
+                }}
+                className={cx('h-8 rounded-md px-3 text-[12.5px] font-medium', side === t.id ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {side === 'mine' ? (
         children(more)
       ) : r.board.length === 0 ? (
         <p className="panel mt-2 px-4 py-6 text-[13px] text-muted">No recent trades in the feed.</p>
       ) : (
-        <div className="panel mt-2 overflow-x-auto">
-          <table className="w-full text-[13px]">
-            <thead className="text-left text-muted">
-              <tr className="border-b border-line">
-                <Th>#</Th>
-                <Th>Wallet</Th>
-                <Th right wide>
-                  Trades
-                </Th>
-                <Th right>Bought</Th>
-                <Th right>P&L</Th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {rows.map((row) => (
-                <tr key={row.trader} className="transition-colors hover:bg-hover">
-                  <Td>
-                    <span className="text-muted">{r.board.indexOf(row) + 1}</span>
-                  </Td>
-                  <Td>
-                    <span className="inline-flex items-center gap-1">
-                      <Link href={ROUTES.trader(row.trader, r.token.address)} className="font-medium underline-offset-2 hover:underline">
-                        {short(row.trader)}
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={async () => toast((await copyText(row.trader)) ? 'Address copied.' : 'Couldn’t copy the address.')}
-                        aria-label={`Copy ${row.trader}`}
-                        title="Copy address"
-                        className="-my-1 grid size-7 place-items-center rounded-md text-muted hover:bg-subtle hover:text-ink"
-                      >
-                        <Copy className="size-3.5" aria-hidden />
-                      </button>
-                    </span>
-                  </Td>
-                  <Td right wide>
-                    {row.trades}
-                  </Td>
-                  <Td right>{usd(row.usdIn)}</Td>
-                  <Td right>
-                    <span className={cx('font-medium', row.pnl > 0 ? 'text-pos' : row.pnl < 0 && 'text-neg')}>{usd(row.pnl, { signed: true })}</span>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:gap-3">
+          <Side title="Top gainers" tone="pos" rows={more ? winners : winners.slice(0, ROWS)} empty="Nobody in profit yet." token={r.token.address} />
+          <Side title="Biggest losers" tone="neg" rows={more ? losers : losers.slice(0, ROWS)} empty="Nobody down yet." token={r.token.address} />
         </div>
       )}
       {total > ROWS && (
@@ -609,5 +569,50 @@ function Board({ r, mine, children }: { r: TokenReceipts; mine: number; children
         </button>
       )}
     </section>
+  );
+}
+
+/** One side of the board: a column of wallet cards, green for winners, red for losers. */
+function Side({ title, tone, rows, empty, token }: { title: string; tone: 'pos' | 'neg'; rows: BoardRow[]; empty: string; token: string }) {
+  return (
+    <div className="panel min-w-0 overflow-hidden">
+      <div className={cx('h-1', tone === 'pos' ? 'bg-pos' : 'bg-neg')} aria-hidden />
+      <h3 className={cx('flex items-center gap-1.5 px-3 pt-2.5 pb-1.5 text-[12px] font-semibold tracking-wide uppercase', tone === 'pos' ? 'text-pos' : 'text-neg')}>
+        {tone === 'pos' ? <TrendingUp className="size-3.5" aria-hidden /> : <TrendingDown className="size-3.5" aria-hidden />}
+        {title}
+      </h3>
+      {rows.length === 0 ? (
+        <p className="px-3 pb-3 text-[12.5px] text-muted">{empty}</p>
+      ) : (
+        <ol className="divide-y divide-line">
+          {rows.map((row, i) => (
+            <li key={row.trader} className="relative px-3 py-2 transition-colors hover:bg-hover">
+              <div className="flex items-center gap-1">
+                <span className="num w-4 shrink-0 text-[11.5px] text-faint">{i + 1}</span>
+                <Link href={ROUTES.trader(row.trader, token)} className="num min-w-0 truncate text-[13px] font-medium after:absolute after:inset-0">
+                  {short(row.trader)}
+                </Link>
+                <button
+                  type="button"
+                  onClick={async () => toast((await copyText(row.trader)) ? 'Address copied.' : 'Couldn’t copy the address.')}
+                  aria-label={`Copy ${row.trader}`}
+                  title="Copy address"
+                  className="relative -my-1 ml-auto grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-subtle hover:text-ink"
+                >
+                  <Copy className="size-3.5" aria-hidden />
+                </button>
+              </div>
+              <div className="num mt-0.5 flex flex-wrap items-baseline gap-x-1.5 pl-5">
+                <span className={cx('text-[14px] font-semibold', tone === 'pos' ? 'text-pos' : 'text-neg')}>{usd(row.pnl, { signed: true })}</span>
+                {row.roi !== null && <span className={cx('text-[11.5px]', tone === 'pos' ? 'text-pos' : 'text-neg')}>{pct(row.roi, { signed: true })}</span>}
+              </div>
+              <p className="num truncate pl-5 text-[11.5px] text-muted">
+                {row.trades} {row.trades === 1 ? 'trade' : 'trades'} · {usd(row.usdIn)} in
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
   );
 }
