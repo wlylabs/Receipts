@@ -8,6 +8,7 @@ import { useStored } from '../hooks/useStored';
 import { useReplay } from '../hooks/useReplay';
 import { KEYS, RANKS, toneOf, type Recent } from '../lib/game';
 import { position, priceAt, rankOf } from '../lib/receipts';
+import { bucket } from '../lib/candles';
 import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
 import type { Trade, TraderReceipts } from '../lib/types';
@@ -26,6 +27,8 @@ import { walletVerdict } from '../lib/story';
 import { TokenImage } from './TokenImage';
 
 const PLAY_MS = 4_200;
+/** Most candles drawn at once. */
+const CANDLES = 80;
 
 export function TraderView({ address, ca }: { address: string; ca: string }) {
   const { state, reload } = useApi<TraderReceipts>(ca ? `/api/trader/${address}/?ca=${encodeURIComponent(ca)}` : null);
@@ -60,6 +63,9 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     const view = full.filter(([ts]) => ts >= lead);
     return view.length >= 12 ? view : full.slice(-12);
   }, [full, from, to]);
+  // the same stretch in candles, merged down to a count that stays readable on a phone
+  const chart = useMemo(() => bucket(r.candles.filter(([ts]) => ts >= series[0]![0]), CANDLES), [r.candles, series]);
+  const entry = p.tokensIn > 0 ? p.usdIn / p.tokensIn : undefined;
   const done = !replay.playing;
   const head = replay.t < 1 ? from + (to - from) * replay.t : undefined;
   const running = useMemo(() => {
@@ -96,6 +102,9 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     chainName: token.chainName,
     verdict: walletVerdict(story, (n) => usd(n)),
     series,
+    candles: chart.candles,
+    step: chart.step,
+    entry,
     from,
     to,
     markers: markers.length <= 60 ? markers : [],
@@ -111,6 +120,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     rank,
     stats: stats.slice(0, 4),
     money,
+    price,
     date: day,
   };
 
@@ -127,7 +137,9 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
         tone: toneOf(p.pnl),
         rank,
         stats: stats.slice(0, 4),
-        series,
+        candles: chart.candles,
+        step: chart.step,
+        entry,
         from,
         to,
         markers: markers.length <= 60 ? markers : [],
@@ -183,7 +195,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
             </div>
           </div>
           <div className="relative mt-3">
-            <ReplayChart series={series} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
+            <ReplayChart candles={chart.candles} step={chart.step} entry={entry} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
           </div>
 
           {done && (

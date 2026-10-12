@@ -1,4 +1,5 @@
 import type { Marker } from '../components/ReplayChart';
+import { candleAt, drawCandles, range, type Candle } from './candles';
 
 export interface CardData {
   /** A small line above the ticker, e.g. a wallet's short address. */
@@ -10,7 +11,10 @@ export interface CardData {
   tone: 'pos' | 'neg' | null;
   rank: { name: string; line: string };
   stats: { k: string; v: string }[];
-  series: readonly [number, number][];
+  candles: readonly Candle[];
+  step: number;
+  /** The average buy, drawn as a dashed line. */
+  entry?: number;
   from: number;
   to: number;
   markers: Marker[];
@@ -86,75 +90,56 @@ export async function cardPng(d: CardData): Promise<Blob> {
     g.lineTo(cx1, cy0 + (cy1 - cy0) * f);
     g.stroke();
   }
-  const s = d.series.filter(([, p]) => p > 0);
-  if (s.length >= 2) {
-    const t0 = s[0]![0];
-    const t1 = Math.max(s.at(-1)![0], d.to);
-    let lo = Infinity;
-    let hi = 0;
-    for (const [, p] of s) {
-      lo = Math.min(lo, p);
-      hi = Math.max(hi, p);
-    }
-    for (const m of d.markers) {
-      if (m.price > 0 && m.ts >= t0) {
-        lo = Math.min(lo, m.price);
-        hi = Math.max(hi, m.price);
-      }
-    }
+  const k = d.candles;
+  if (k.length >= 2) {
+    const t0 = k[0]![0];
+    const t1 = Math.max(k.at(-1)![0] + d.step, d.to);
+    const { lo, hi } = range(k, [...d.markers.filter((m) => m.ts >= t0).map((m) => m.price), d.entry ?? 0]);
     const llo = Math.log(lo);
-    const lhi = Math.log(hi === lo ? hi * 1.1 : hi);
+    const lhi = Math.log(hi);
     const X = (ts: number) => cx0 + ((ts - t0) / Math.max(1, t1 - t0)) * (cx1 - cx0);
     const Y = (p: number) => cy1 - ((Math.log(Math.max(p, lo)) - llo) / Math.max(1e-9, lhi - llo)) * (cy1 - cy0);
-    const line = (pts: readonly [number, number][]) => {
+    // the run's stretch, shaded
+    g.fillStyle = color;
+    g.globalAlpha = 0.06;
+    g.fillRect(X(d.from), cy0 - 16, X(d.to) - X(d.from), cy1 - cy0 + 32);
+    g.globalAlpha = 1;
+    if (d.entry && d.entry > 0) {
+      g.setLineDash([12, 12]);
+      g.strokeStyle = 'rgba(63,63,70,0.6)';
+      g.lineWidth = 2.5;
       g.beginPath();
-      pts.forEach(([ts, p], i) => (i ? g.lineTo(X(ts), Y(p)) : g.moveTo(X(ts), Y(p))));
-    };
-    g.lineJoin = 'round';
-    g.lineCap = 'round';
-    line(s);
-    g.strokeStyle = 'rgba(17,17,19,0.22)';
-    g.lineWidth = 3;
-    g.stroke();
-    const run = s.filter(([ts]) => ts >= d.from && ts <= d.to);
-    if (run.length >= 2) {
-      // a soft fill under the run
-      line(run);
-      g.lineTo(X(run.at(-1)![0]), cy1);
-      g.lineTo(X(run[0]![0]), cy1);
-      g.closePath();
-      const grad = g.createLinearGradient(0, cy0, 0, cy1);
-      grad.addColorStop(0, d.tone === 'pos' ? 'rgba(22,163,74,0.18)' : d.tone === 'neg' ? 'rgba(220,38,38,0.16)' : 'rgba(17,17,19,0.1)');
-      grad.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = grad;
-      g.fill();
-      line(run);
-      g.strokeStyle = color;
-      g.lineWidth = 6;
+      g.moveTo(cx0, Y(d.entry));
+      g.lineTo(cx1, Y(d.entry));
       g.stroke();
+      g.setLineDash([]);
     }
+    drawCandles(g, k, d.step, X, Y, { up: '#16a34a', down: '#dc2626', body: 0.68 });
     for (const m of d.markers) {
       if (m.ts < t0) continue;
-      const mx = X(m.ts);
-      const my = Y(Math.max(m.price, lo));
-      g.fillStyle = m.kind === 'buy' ? '#16a34a' : '#dc2626';
-      g.strokeStyle = '#ffffff';
-      g.lineWidth = 5;
+      const c = candleAt(k, d.step, m.ts);
+      const buy = m.kind === 'buy';
+      const dir = buy ? 1 : -1;
+      const mx = X(c ? c[0] + d.step / 2 : m.ts);
+      const my = (buy ? Y(Math.min(c?.[3] ?? m.price, m.price)) : Y(Math.max(c?.[2] ?? m.price, m.price))) + dir * 10;
+      g.fillStyle = buy ? '#16a34a' : '#dc2626';
       g.beginPath();
+      g.moveTo(mx, my);
+      g.lineTo(mx - 11, my + dir * 16);
+      g.lineTo(mx + 11, my + dir * 16);
+      g.closePath();
+      g.fill();
       if (m.label) {
-        font(24, 600);
-        const lw = g.measureText(m.label).width + 28;
-        g.roundRect(mx - lw / 2, my - 20, lw, 40, 20);
+        font(22, 600);
+        const lw = g.measureText(m.label).width + 22;
+        const top = buy ? my + 20 : my - 20 - 36;
+        g.beginPath();
+        g.roundRect(mx - lw / 2, top, lw, 36, 9);
         g.fill();
-        g.stroke();
         g.fillStyle = '#ffffff';
         g.textAlign = 'center';
-        g.fillText(m.label, mx, my + 8);
+        g.fillText(m.label, mx, top + 26);
         g.textAlign = 'left';
-      } else {
-        g.arc(mx, my, 12, 0, Math.PI * 2);
-        g.fill();
-        g.stroke();
       }
     }
   }

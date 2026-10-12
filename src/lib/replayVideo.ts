@@ -1,5 +1,6 @@
 import type { Marker } from '../components/ReplayChart';
 import { renderSound, SAMPLE_RATE, type Cue } from './videoSound';
+import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './candles';
 
 /**
  * A video of one replay, drawn on a canvas and encoded in the browser: MP4 (H.264 + AAC) through
@@ -50,6 +51,11 @@ export interface ReplayVideo {
   /** The answer in one line, over the P&L: e.g. "Was 5x up, ended down 40%". */
   verdict: string;
   series: readonly [number, number][];
+  /** The chart as candles over the same stretch, `step` seconds each. */
+  candles: readonly Candle[];
+  step: number;
+  /** The average buy, drawn as a dashed line; none when there were no buys. */
+  entry?: number;
   from: number;
   to: number;
   markers: Marker[];
@@ -63,6 +69,8 @@ export interface ReplayVideo {
   rank: { name: string; line: string };
   stats: { k: string; v: string }[];
   money: (n: number) => string;
+  /** A token price, for the price axis. */
+  price: (n: number) => string;
   date: (ts: number) => string;
 }
 
@@ -135,7 +143,7 @@ function layout(f: VideoFormat): Layout {
       pad: 96,
       headerY: 150,
       symbolSize: 76,
-      chart: { x0: 96, x1: W - 96, y0: 300, y1: H - 120 },
+      chart: { x0: 96, x1: W - 96, y0: 340, y1: H - 120 },
       counter: { x: W - 96, y: 150, size: 120, align: 'right' },
       caption: { x: 96, y: 238, size: 34 },
       reveal: { top: 270, big: 200, rankY: 540, rankBelow: false, statsY: 720, cols: 2, rowH: 84, statSize: 36 },
@@ -147,7 +155,7 @@ function layout(f: VideoFormat): Layout {
       pad: 72,
       headerY: 140,
       symbolSize: 72,
-      chart: { x0: 72, x1: W - 72, y0: 420, y1: H - 110 },
+      chart: { x0: 72, x1: W - 72, y0: 470, y1: H - 110 },
       counter: { x: 72, y: 280, size: 120, align: 'left' },
       caption: { x: 72, y: 362, size: 32 },
       reveal: { top: 240, big: 170, rankY: 540, rankBelow: true, statsY: 750, cols: 1, rowH: 68, statSize: 34 },
@@ -158,7 +166,7 @@ function layout(f: VideoFormat): Layout {
     pad: 80,
     headerY: 230,
     symbolSize: 92,
-    chart: { x0: 80, x1: W - 80, y0: 700, y1: 1480 },
+    chart: { x0: 80, x1: W - 80, y0: 750, y1: 1480 },
     counter: { x: 80, y: 470, size: 160, align: 'left' },
     caption: { x: 80, y: 585, size: 40 },
     reveal: { top: 440, big: 190, rankY: 760, rankBelow: true, statsY: 1010, cols: 1, rowH: 96, statSize: 42 },
@@ -176,26 +184,19 @@ function fit(g: CanvasRenderingContext2D, text: string, size: number, weight: nu
   if (w > max) font(g, Math.floor((size * max) / w), weight);
 }
 
+/** Width kept at the chart's right for the price axis. */
+const axisW = (L: Layout) => (L.H > L.W ? 190 : 170);
+
 function geometry(v: ReplayVideo, L: Layout) {
   const s = v.series.filter(([, p]) => p > 0);
-  const t0 = s[0]?.[0] ?? v.from;
-  const t1 = Math.max(s.at(-1)?.[0] ?? v.to, v.to);
-  let lo = Infinity;
-  let hi = 0;
-  for (const [, p] of s) {
-    lo = Math.min(lo, p);
-    hi = Math.max(hi, p);
-  }
-  for (const m of v.markers) {
-    if (m.price > 0 && m.ts >= t0) {
-      lo = Math.min(lo, m.price);
-      hi = Math.max(hi, m.price);
-    }
-  }
-  if (!Number.isFinite(lo)) lo = hi = 1;
+  const c = v.candles;
+  const t0 = c[0]?.[0] ?? s[0]?.[0] ?? v.from;
+  const t1 = Math.max((c.at(-1)?.[0] ?? s.at(-1)?.[0] ?? v.to) + (c.length ? v.step : 0), v.to);
+  const { lo, hi } = range(c, [...s.map(([, p]) => p), ...v.markers.filter((m) => m.ts >= t0).map((m) => m.price), v.entry ?? 0]);
   const llo = Math.log(lo);
-  const lhi = Math.log(hi === lo ? hi * 1.1 : hi);
-  const { x0, x1, y0, y1 } = L.chart;
+  const lhi = Math.log(hi);
+  const { x0, y0, y1 } = L.chart;
+  const x1 = L.chart.x1 - axisW(L);
   const X = (ts: number) => x0 + ((ts - t0) / Math.max(1, t1 - t0)) * (x1 - x0);
   const level = (p: number) => (Math.log(Math.max(p, lo)) - llo) / Math.max(1e-9, lhi - llo);
   const Y = (p: number) => y1 - level(p) * (y1 - y0);
@@ -209,13 +210,7 @@ function geometry(v: ReplayVideo, L: Layout) {
     }
     return s.at(-1)![1];
   };
-  const points = (a: number, b: number): [number, number][] => {
-    const out: [number, number][] = [[a, at(a)]];
-    for (const p of s) if (p[0] > a && p[0] < b) out.push(p);
-    out.push([b, at(b)]);
-    return out;
-  };
-  return { s, t0, X, Y, at, level, points };
+  return { s, t0, x1, X, Y, at, level, ticks: logTicks(lo, hi, 4) };
 }
 
 /** One frame at `time` seconds. */
@@ -279,83 +274,94 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     }
   }
 
-  // the chart
-  const { x0, x1, y0, y1 } = L.chart;
-  g.strokeStyle = LINE;
-  g.lineWidth = 2;
-  for (const k of [0.25, 0.5, 0.75]) {
+  // the chart: candles up to the playhead, the price axis on the right
+  const { x0, y0, y1 } = L.chart;
+  const px1 = geo.x1;
+  const big = f === 'portrait' ? 1.25 : 1;
+  const axisX = px1 + 22;
+  const tag = (p: number, fill: string, text: string) => {
+    font(g, Math.round(25 * big), 650);
+    const w = g.measureText(text).width + 22;
+    const h = 40 * big;
+    g.fillStyle = fill;
     g.beginPath();
-    g.moveTo(x0, y0 + (y1 - y0) * k);
-    g.lineTo(x1, y0 + (y1 - y0) * k);
-    g.stroke();
-  }
-  const path = (pts: readonly [number, number][]) => {
-    g.beginPath();
-    pts.forEach(([ts, pr], i) => (i ? g.lineTo(geo.X(ts), geo.Y(pr)) : g.moveTo(geo.X(ts), geo.Y(pr))));
+    g.roundRect(axisX - 8, geo.Y(p) - h / 2, w, h, 8);
+    g.fill();
+    g.fillStyle = '#ffffff';
+    g.textAlign = 'left';
+    g.fillText(text, axisX + 3, geo.Y(p) + 9 * big);
   };
-  g.lineJoin = 'round';
-  g.lineCap = 'round';
-  if (geo.s.length >= 2) {
-    path(geo.s);
-    g.strokeStyle = playing ? 'rgba(17,17,19,0.2)' : 'rgba(17,17,19,0.45)';
-    g.lineWidth = f === 'portrait' ? 4.5 : 3.5;
+  const shownTo = playing ? head : v.from;
+  const shown = upTo(v.candles, v.step, shownTo);
+  const nowPrice = shown.at(-1)?.[4] ?? geo.at(shownTo);
+  const tagYs = [geo.Y(nowPrice), ...(v.entry && v.entry > 0 ? [geo.Y(v.entry)] : [])];
+  g.lineWidth = 2;
+  font(g, Math.round(24 * big), 500);
+  g.textAlign = 'left';
+  for (const t of geo.ticks) {
+    g.strokeStyle = LINE;
+    g.beginPath();
+    g.moveTo(x0, geo.Y(t));
+    g.lineTo(px1, geo.Y(t));
     g.stroke();
+    if (tagYs.some((y) => Math.abs(y - geo.Y(t)) < 44 * big)) continue;
+    g.fillStyle = MUTED;
+    g.fillText(v.price(t), axisX, geo.Y(t) + 8);
   }
   if (playing && head > v.from) {
-    const run = geo.points(v.from, head);
-    path(run);
-    g.lineTo(geo.X(head), y1);
-    g.lineTo(geo.X(v.from), y1);
-    g.closePath();
-    const grad = g.createLinearGradient(0, y0, 0, y1);
-    grad.addColorStop(0, color === POS ? 'rgba(22,163,74,0.2)' : color === NEG ? 'rgba(220,38,38,0.18)' : 'rgba(17,17,19,0.1)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad;
-    g.fill();
-    path(run);
-    g.strokeStyle = color;
-    g.lineWidth = f === 'portrait' ? 9 : 7;
+    A(0.06);
+    g.fillStyle = color;
+    g.fillRect(geo.X(v.from), y0 - 20, geo.X(head) - geo.X(v.from), y1 - y0 + 40);
+    A(1);
+  }
+  if (v.entry && v.entry > 0) {
+    g.setLineDash([12, 12]);
+    g.strokeStyle = 'rgba(63,63,70,0.6)';
+    g.lineWidth = 2.5;
+    g.beginPath();
+    g.moveTo(x0, geo.Y(v.entry));
+    g.lineTo(px1, geo.Y(v.entry));
     g.stroke();
+    g.setLineDash([]);
+  }
+  drawCandles(g, shown, v.step, geo.X, geo.Y, { up: POS, down: NEG, body: 0.68 });
 
-    // trades pop as the playhead reaches them
+  // trades pop as the playhead reaches them, buys under their candle and sells over it
+  if (playing) {
     for (const m of v.markers) {
       if (m.ts > head || m.ts < geo.t0) continue;
       const k = easeBack((time - timeOf(Math.max(m.ts, v.from), v, l)) / 0.3);
-      drawMarker(g, geo.X(m.ts), geo.Y(m.price), m, k, f === 'portrait' ? 1.25 : 1);
+      const c = candleAt(v.candles, v.step, m.ts);
+      const buy = m.kind === 'buy';
+      const py = buy ? geo.Y(Math.min(c?.[3] ?? m.price, m.price)) : geo.Y(Math.max(c?.[2] ?? m.price, m.price));
+      drawMarker(g, geo.X(c ? c[0] + v.step / 2 : m.ts), py, m, k, big);
     }
+  }
 
-    // the playhead
-    if (p < 1) {
-      const hx = geo.X(head);
-      const hy = geo.Y(geo.at(head));
-      g.setLineDash([8, 10]);
-      g.strokeStyle = color;
-      A(0.4);
-      g.lineWidth = 2;
-      g.beginPath();
-      g.moveTo(hx, y0 - 10);
-      g.lineTo(hx, y1);
-      g.stroke();
-      g.setLineDash([]);
-      A(0.18 + 0.12 * Math.sin(time * 9));
-      g.fillStyle = color;
-      g.beginPath();
-      g.arc(hx, hy, 34, 0, Math.PI * 2);
-      g.fill();
-      A(1);
-      g.fillStyle = color;
-      g.strokeStyle = '#ffffff';
-      g.lineWidth = 6;
-      g.beginPath();
-      g.arc(hx, hy, 15, 0, Math.PI * 2);
-      g.fill();
-      g.stroke();
-      font(g, f === 'portrait' ? 34 : 26, 500);
-      g.fillStyle = MUTED;
-      const right = hx > (x0 + x1) / 2;
-      g.textAlign = right ? 'right' : 'left';
-      g.fillText(v.date(head), hx + (right ? -16 : 16), y1 + (f === 'portrait' ? 60 : 46));
-    }
+  if (v.entry && v.entry > 0 && Math.abs(geo.Y(v.entry) - geo.Y(nowPrice)) > 44 * big) tag(v.entry, INK2, v.price(v.entry));
+  tag(nowPrice, playing ? color : INK, v.price(nowPrice));
+
+  // the playhead
+  if (playing && head > v.from && p < 1) {
+    const hx = geo.X(head);
+    const hy = geo.Y(nowPrice);
+    g.setLineDash([8, 10]);
+    g.strokeStyle = color;
+    A(0.4);
+    g.lineWidth = 2;
+    g.beginPath();
+    g.moveTo(hx, y0 - 10);
+    g.lineTo(hx, y1);
+    g.moveTo(x0, hy);
+    g.lineTo(px1, hy);
+    g.stroke();
+    g.setLineDash([]);
+    A(1);
+    font(g, f === 'portrait' ? 34 : 26, 500);
+    g.fillStyle = MUTED;
+    const right = hx > (x0 + px1) / 2;
+    g.textAlign = right ? 'right' : 'left';
+    g.fillText(v.date(head), hx + (right ? -16 : 16), y1 + (f === 'portrait' ? 60 : 46));
   }
 
   // the reveal
@@ -381,33 +387,31 @@ function drawPill(g: CanvasRenderingContext2D, x: number, y: number, text: strin
   g.fillText(text, x + size * 0.55, y + size * 0.05);
 }
 
+/** A trade on its candle: an arrow and a pill, under the candle for a buy and over it for a sell. */
 function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker, k: number, scale: number) {
   if (k <= 0) return;
+  const buy = m.kind === 'buy';
+  const dir = buy ? 1 : -1;
   g.save();
-  g.translate(x, y);
+  g.translate(x, y + dir * 12 * scale);
   g.scale(k * scale, k * scale);
-  g.fillStyle = m.kind === 'buy' ? POS : NEG;
-  g.strokeStyle = '#ffffff';
-  g.lineWidth = 5;
+  g.fillStyle = buy ? POS : NEG;
   g.beginPath();
-  if (m.label) {
-    font(g, 26, 650);
-    const w = g.measureText(m.label).width + 32;
-    g.roundRect(-w / 2, -22, w, 44, 22);
-    g.fill();
-    g.stroke();
-    g.fillStyle = '#ffffff';
-    g.textAlign = 'center';
-    g.fillText(m.label, 0, 9);
-  } else {
-    g.arc(0, 0, 13, 0, Math.PI * 2);
-    g.fill();
-    g.stroke();
-    font(g, 16, 700);
-    g.fillStyle = '#ffffff';
-    g.textAlign = 'center';
-    g.fillText(m.kind === 'buy' ? 'B' : 'S', 0, 6);
-  }
+  g.moveTo(0, 0);
+  g.lineTo(-13, dir * 18);
+  g.lineTo(13, dir * 18);
+  g.closePath();
+  g.fill();
+  const text = m.label ?? (buy ? 'BUY' : 'SELL');
+  font(g, 24, 700);
+  const w = g.measureText(text).width + 26;
+  const top = buy ? 24 : -24 - 40;
+  g.beginPath();
+  g.roundRect(-w / 2, top, w, 40, 10);
+  g.fill();
+  g.fillStyle = '#ffffff';
+  g.textAlign = 'center';
+  g.fillText(text, 0, top + 29);
   g.restore();
 }
 
