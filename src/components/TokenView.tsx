@@ -1,29 +1,28 @@
 'use client';
 
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Download, Link2, Loader2 } from 'lucide-react';
+import { ArrowUpRight, Download, FastForward, Link2, Loader2, Play, RotateCcw } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
-import { KEYS, RANKS, stampOf, toneOf, type Recent } from '../lib/game';
-import { placement, rankOf, simulate, type SimResult } from '../lib/receipts';
+import { useReplay } from '../hooks/useReplay';
+import { KEYS, RANKS, toneOf, type Recent } from '../lib/game';
+import { placement, priceAt, rankOf, simulate, type SimResult } from '../lib/receipts';
 import { pushRecent } from '../lib/recent';
 import { MAX_PAPER, PAPER_KEY, paperPnl, type PaperTrade } from '../lib/paper';
-import type { ReceiptDoc } from '../lib/receiptDoc';
 import type { TokenReceipts } from '../lib/types';
-import { compact, dateTime, day, parseAmount, pct, price, short, span, usd } from '../lib/format';
+import { compact, day, parseAmount, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_HOST, SITE_URL } from '../lib/site';
 import { saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
-import { Receipt } from './Receipt';
 import { Failure, Loading } from './States';
-import { PriceChart, type Marker } from './PriceChart';
+import { ReplayChart, type Marker } from './ReplayChart';
+import { ResultCard, type Stat } from './ResultCard';
 import { TokenImage } from './TokenImage';
-import { Sheet } from './Sheet';
 
 const BAGS = [50, 100, 500, 1000];
-const PLAY_MS = 2_200;
+const PLAY_MS = 3_200;
 
 export function TokenView({ ca }: { ca: string }) {
   const { state, reload } = useApi<TokenReceipts>(`/api/token/${ca}/`);
@@ -36,6 +35,16 @@ export function TokenView({ ca }: { ca: string }) {
   if (state.status === 'loading') return <Loading what={`Loading ${short(ca)}’s chart and latest trades…`} />;
   if (state.status === 'error') return <Failure error={state.error} onRetry={reload} />;
   return <PaperTradeDesk key={ca} r={state.data} />;
+}
+
+/** A placed paper trade, frozen while it replays and after. */
+interface Run {
+  entry: number;
+  exit: number;
+  holdNow: boolean;
+  amount: number;
+  sim: SimResult;
+  place: number;
 }
 
 function PaperTradeDesk({ r }: { r: TokenReceipts }) {
@@ -52,13 +61,11 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
   const [bag, setBag] = useState('100');
   const [entry, setEntry] = useState(0);
   const [exit, setExit] = useState(last);
-  const [playing, setPlaying] = useState(false);
-  const [reveal, setReveal] = useState(last);
-  const [result, setResult] = useState<{ sim: SimResult; doc: ReceiptDoc; place: number; amount: number } | null>(null);
-  const [sheet, setSheet] = useState(false);
-  const [shown, setShown] = useState(Infinity);
+  const [run, setRun] = useState<Run | null>(null);
   const [saving, setSaving] = useState(false);
   const [paper, setPaper] = useStored<PaperTrade[]>(PAPER_KEY, []);
+  const replay = useReplay(PLAY_MS);
+  const chartRef = useRef<HTMLElement>(null);
   const ids = { bag: useId(), entry: useId(), exit: useId() };
 
   const amount = parseAmount(bag);
@@ -67,31 +74,9 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
   const sim = useMemo(() => simulate({ series, entry, exit, usd: bagOk ? amount : 0, holdNow, nowPrice: token.priceUsd }), [series, entry, exit, amount, bagOk, token, holdNow]);
   const place = placement(sim.pnl, board);
 
-  // the replay walks the held stretch on the chart, then the receipt prints in the sheet
-  useEffect(() => {
-    if (!playing) return;
-    if (reveal < exit) {
-      const steps = Math.max(1, exit - entry);
-      const jump = Math.max(1, Math.ceil(steps / 50));
-      const id = setTimeout(() => setReveal((v) => Math.min(exit, v + jump)), PLAY_MS / Math.ceil(steps / jump));
-      return () => clearTimeout(id);
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the replay ends at the exit
-    setPlaying(false);
-    setShown(0);
-    setSheet(true);
-  }, [playing, reveal, exit, entry]);
-
-  useEffect(() => {
-    if (!sheet || !result || shown >= result.doc.lines.length) return;
-    const id = setTimeout(() => setShown((s) => s + 1), 55);
-    return () => clearTimeout(id);
-  }, [sheet, result, shown]);
-
   const placeTrade = () => {
-    if (!sim.ok || playing) return;
-    const doc = simDoc(r, sim, entry, exit, holdNow, place, amount);
-    setResult({ sim, doc, place, amount });
+    if (!sim.ok || replay.playing) return;
+    setRun({ entry, exit, holdNow, amount, sim, place });
     const trade: PaperTrade = {
       id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
       chain: token.chain,
@@ -106,23 +91,17 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
       placedAt: Date.now(),
     };
     setPaper((list) => [trade, ...list].slice(0, MAX_PAPER));
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setReveal(exit);
-      setShown(Infinity);
-      setSheet(true);
-      return;
-    }
-    setReveal(entry);
-    setPlaying(true);
+    replay.play();
+    // on one column the chart sits above the ticket: bring it into view to watch
+    if (!window.matchMedia('(min-width: 64rem)').matches) chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const closeSheet = useCallback(() => setSheet(false), []);
-
+  // any change to the ticket leaves the finished run behind
   const edit =
     <T,>(fn: (v: T) => void) =>
     (v: T) => {
       fn(v);
-      setReveal(last);
+      if (!replay.playing) setRun(null);
     };
   const setEntryAt = edit((i: number) => {
     setEntry(i);
@@ -143,36 +122,71 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
     ...(athIdx >= entry && athIdx < last ? [{ label: 'Sell the top', on: () => setExitAt(athIdx), active: exit === athIdx }] : []),
   ];
 
-  const markers: Marker[] = sim.ok
+  // what the chart shows: the placed run as it replays, or the ticket as it is being set
+  const shown = run ?? (sim.ok ? { entry, exit, holdNow, amount, sim, place } : null);
+  const fromTs = shown ? series[shown.entry]![0] : undefined;
+  const toTs = shown ? series[shown.exit]![0] : undefined;
+  const head = run && fromTs !== undefined && toTs !== undefined && replay.t < 1 ? fromTs + (toTs - fromTs) * replay.t : undefined;
+  const livePnl = !shown ? 0 : head === undefined ? shown.sim.pnl : shown.sim.tokens * priceAt(series, head, token.priceUsd) - shown.amount;
+  const liveTone = toneOf(livePnl);
+  const finished = !!run && !replay.playing;
+  const markers: Marker[] = shown
     ? [
-        { ts: series[entry]![0], price: series[entry]![1], kind: 'entry' },
-        ...(playing ? [] : [{ ts: series[exit]![0], price: holdNow ? token.priceUsd : series[exit]![1], kind: 'exit' as const }]),
+        { ts: series[shown.entry]![0], price: shown.sim.entryPrice, kind: 'buy', label: 'Buy' },
+        ...(head === undefined ? [{ ts: series[shown.exit]![0], price: shown.sim.exitPrice, kind: 'sell' as const, label: shown.holdNow ? 'Now' : 'Sell' }] : []),
       ]
     : [];
-  const live = playing ? (sim.path[Math.max(0, Math.min(sim.path.length - 1, reveal - entry))]?.pnl ?? 0) : sim.pnl;
-  const liveTone = toneOf(live);
-  const mine = paper.filter((p) => p.chain === token.chain && p.address === token.address);
 
+  const mine = paper.filter((p) => p.chain === token.chain && p.address === token.address);
   const closeAtMarket = (id: string) => setPaper((list) => list.map((p) => (p.id === id ? { ...p, exitTs: Math.floor(Date.now() / 1000), exitPrice: token.priceUsd } : p)));
 
+  const rank = run ? RANKS[rankOf(run.sim.roi)] : null;
+  const stats: Stat[] = run
+    ? [
+        { k: 'Bought', v: `${usd(run.amount)} · ${day(series[run.entry]![0])}` },
+        { k: run.holdNow ? 'Worth now' : 'Sold for', v: usd(run.sim.out) },
+        { k: 'Held for', v: span((run.holdNow ? now : series[run.exit]![0]) - series[run.entry]![0]) },
+        { k: 'Best exit', v: usd(run.sim.bestOut) },
+        { k: 'Entry', v: price(run.sim.entryPrice) },
+        { k: 'vs traders', v: `#${run.place} of ${board.length + 1}` },
+      ]
+    : [];
+
   const share = async () => {
-    if (!result) return;
+    if (!run) return;
     const res = await shareLink(
       `${SITE_URL}${ROUTES.token(token.address)}`,
       'Receipts',
-      `Paper-traded ${usd(result.amount)} of $${token.symbol}: ${usd(result.sim.pnl, { signed: true })} (${pct(result.sim.roi, { signed: true })}), #${result.place} of ${board.length + 1} traders. Beat it:`,
+      `Paper-traded ${usd(run.amount)} of $${token.symbol}: ${usd(run.sim.pnl, { signed: true })} (${pct(run.sim.roi, { signed: true })}), #${run.place} of ${board.length + 1} traders. Beat it:`,
     );
     if (res === 'copied') toast('Link copied.');
     else if (res === 'failed') toast('Couldn’t share. Copy the address bar instead.');
   };
   const save = async () => {
-    if (!result) return;
+    if (!run || !rank) return;
     setSaving(true);
     try {
-      const { receiptPng } = await import('../lib/receiptImage');
-      const blob = await receiptPng(result.doc, SITE_HOST);
-      const res = await saveFile(new File([blob], `receipt-${token.symbol.toLowerCase().replace(/[^a-z0-9]/g, '') || 'token'}.png`, { type: 'image/png' }));
-      if (res === 'saved') toast('Receipt saved.');
+      const { cardPng } = await import('../lib/cardImage');
+      const blob = await cardPng({
+        kicker: 'PAPER TRADE',
+        symbol: token.symbol,
+        chainName: token.chainName,
+        pnl: usd(run.sim.pnl, { signed: true }),
+        roi: pct(run.sim.roi, { signed: true }),
+        tone: toneOf(run.sim.pnl),
+        rank,
+        stats: stats.slice(0, 4),
+        series,
+        from: series[run.entry]![0],
+        to: series[run.exit]![0],
+        markers: [
+          { ts: series[run.entry]![0], price: run.sim.entryPrice, kind: 'buy', label: 'Buy' },
+          { ts: series[run.exit]![0], price: run.sim.exitPrice, kind: 'sell', label: run.holdNow ? 'Now' : 'Sell' },
+        ],
+        site: SITE_HOST,
+      });
+      const res = await saveFile(new File([blob], `${token.symbol.toLowerCase().replace(/[^a-z0-9]/g, '') || 'token'}-paper-trade.png`, { type: 'image/png' }));
+      if (res === 'saved') toast('Image saved.');
     } catch {
       toast('Couldn’t make the image. Try again.');
     } finally {
@@ -200,28 +214,64 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
         </div>
       </header>
       <dl className="no-scrollbar mt-4 flex gap-5 overflow-x-auto border-y border-line py-2.5 text-[12.5px]">
-        <Stat k="Mcap" v={usd(token.mcapUsd)} />
-        <Stat k="Liquidity" v={usd(token.liquidityUsd)} />
-        <Stat k="Vol 24h" v={usd(token.volume24hUsd)} />
-        <Stat k="Age" v={token.createdAt ? span(now - token.createdAt) : '-'} />
-        <Stat k="ATH" v={price(r.ath.priceUsd)} />
+        <Kv k="Mcap" v={usd(token.mcapUsd)} />
+        <Kv k="Liquidity" v={usd(token.liquidityUsd)} />
+        <Kv k="Vol 24h" v={usd(token.volume24hUsd)} />
+        <Kv k="Age" v={token.createdAt ? span(now - token.createdAt) : '-'} />
+        <Kv k="ATH" v={price(r.ath.priceUsd)} />
         <a href={token.url} target="_blank" rel="noreferrer" className="ml-auto flex shrink-0 items-center gap-1 text-muted hover:text-ink">
           DexScreener <ArrowUpRight className="size-3.5" aria-hidden />
         </a>
       </dl>
 
       <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        {/* the chart */}
-        <section className="panel p-3 sm:p-4" aria-label="Chart">
-          <div className="flex items-center justify-between gap-3 px-1">
-            <p className="eyebrow">{r.candle} candles · log</p>
-            {sim.ok && (
-              <p className={cx('num rounded-md px-2 py-0.5 text-[13px] font-semibold', liveTone === 'pos' && 'bg-pos-wash text-pos', liveTone === 'neg' && 'bg-neg-wash text-neg', !liveTone && 'bg-subtle')} aria-live="polite">
-                {usd(live, { signed: true })}
-              </p>
+        {/* the chart, where the run plays */}
+        <section ref={chartRef} className="panel scroll-mt-20 p-3 sm:p-4" aria-label="Chart">
+          <div className="flex min-h-9 items-center justify-between gap-3 px-1">
+            <div>
+              <p className="eyebrow">{replay.playing ? 'Replaying your trade' : `${r.candle} candles · log`}</p>
+              {shown && (
+                <p className={cx('num text-[22px] font-semibold leading-tight tracking-tight', liveTone === 'pos' && 'text-pos', liveTone === 'neg' && 'text-neg')} aria-live="off">
+                  {usd(livePnl, { signed: true })}
+                </p>
+              )}
+            </div>
+            {replay.playing && (
+              <button type="button" onClick={replay.skip} className="btn btn-quiet h-8 min-h-0 px-2.5 text-[12.5px]">
+                <FastForward className="size-3.5" aria-hidden /> Skip
+              </button>
             )}
           </div>
-          <PriceChart series={series} markers={markers} range={sim.ok ? [entry, exit] : undefined} reveal={reveal} tone={liveTone} athTs={r.ath.ts} className="mt-3" />
+          <ReplayChart
+            series={series}
+            from={fromTs}
+            to={toTs}
+            head={head}
+            markers={markers}
+            tone={liveTone}
+            bubble={head !== undefined ? price(priceAt(series, head, token.priceUsd)) : undefined}
+            athTs={r.ath.ts}
+            className="mt-3"
+          />
+
+          {finished && run && rank && (
+            <div className="mt-4 border-t border-line px-1 pt-4" role="status">
+              <ResultCard kicker={`Paper trade · ${token.symbol}`} pnl={usd(run.sim.pnl, { signed: true })} roi={pct(run.sim.roi, { signed: true })} tone={toneOf(run.sim.pnl)} rank={rank} stats={stats}>
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  <button type="button" onClick={replay.play} className="btn btn-quiet">
+                    <RotateCcw className="size-4" aria-hidden /> <span className="hidden sm:inline">Replay</span>
+                  </button>
+                  <button type="button" onClick={save} disabled={saving} className="btn btn-quiet">
+                    {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
+                    Image
+                  </button>
+                  <button type="button" onClick={share} className="btn btn-primary">
+                    <Link2 className="size-4" aria-hidden /> Challenge
+                  </button>
+                </div>
+              </ResultCard>
+            </div>
+          )}
         </section>
 
         {/* the order ticket */}
@@ -270,13 +320,12 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
           <dl className="mt-4 space-y-1.5 border-t border-line pt-3 text-[13px]">
             <Row k="Tokens" v={sim.ok ? compact(sim.tokens) : '-'} />
             <Row k="Value at exit" v={sim.ok ? usd(sim.out) : '-'} />
-            <Row k="Est. P&L" v={sim.ok ? `${usd(sim.pnl, { signed: true })} · ${pct(sim.roi, { signed: true })}` : '-'} tone={sim.ok ? toneOf(sim.pnl) : null} strong />
             <Row k="Rank" v={sim.ok ? `#${place} of ${board.length + 1}` : '-'} />
           </dl>
 
-          <button type="button" onClick={placeTrade} disabled={!sim.ok || playing} className="btn btn-primary mt-4 h-11 w-full text-[14.5px]">
-            {playing && <Loader2 className="size-4 animate-spin" aria-hidden />}
-            {playing ? 'Replaying…' : 'Place paper trade'}
+          <button type="button" onClick={placeTrade} disabled={!sim.ok || replay.playing} className="btn btn-primary mt-4 h-11 w-full text-[14.5px]">
+            {replay.playing ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Play className="size-4" aria-hidden />}
+            {replay.playing ? 'Replaying…' : 'Place paper trade'}
           </button>
           <p className="mt-2.5 text-[11.5px] leading-snug text-faint">At candle close prices. DEX fees, taxes and slippage not included.</p>
         </section>
@@ -309,7 +358,7 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
                       <Td>{day(p.entryTs)}</Td>
                       <Td>{usd(p.usd)}</Td>
                       <Td wide>{price(p.entryPrice)}</Td>
-                      <Td>{p.exitPrice ? price(p.exitPrice) : <span className="text-muted">Open · {price(token.priceUsd)}</span>}</Td>
+                      <Td>{p.exitPrice ? price(p.exitPrice) : <span className="text-muted">Open</span>}</Td>
                       <Td right>
                         <span className={cx('font-medium', pnl > 0 ? 'text-pos' : pnl < 0 && 'text-neg')}>{usd(pnl, { signed: true })}</span>
                       </Td>
@@ -332,31 +381,11 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
       )}
 
       <Board r={r} />
-
-      <Sheet open={sheet && !!result} onClose={closeSheet} title="Paper trade receipt">
-        {result && (
-          <>
-            <Receipt doc={result.doc} shown={shown} />
-            <p className="mt-5 text-center text-[13.5px] text-ink-2">
-              You’d place <b className="num">#{result.place}</b> of <b className="num">{board.length + 1}</b> recent {token.symbol} traders.
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" onClick={save} disabled={saving} className="btn btn-quiet">
-                {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
-                Save image
-              </button>
-              <button type="button" onClick={share} className="btn btn-primary">
-                <Link2 className="size-4" aria-hidden /> Challenge
-              </button>
-            </div>
-          </>
-        )}
-      </Sheet>
     </div>
   );
 }
 
-function Stat({ k, v }: { k: string; v: string }) {
+function Kv({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex shrink-0 gap-1.5">
       <dt className="text-muted">{k}</dt>
@@ -365,11 +394,11 @@ function Stat({ k, v }: { k: string; v: string }) {
   );
 }
 
-function Row({ k, v, tone, strong }: { k: string; v: string; tone?: 'pos' | 'neg' | null; strong?: boolean }) {
+function Row({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex justify-between gap-3">
       <dt className="text-muted">{k}</dt>
-      <dd className={cx('num text-right', strong && 'font-semibold', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{v}</dd>
+      <dd className="num text-right">{v}</dd>
     </div>
   );
 }
@@ -455,7 +484,7 @@ function Board({ r }: { r: TokenReceipts }) {
             Recent traders
           </h2>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            {r.board.length} wallets in the latest {r.window.trades} trades ({span(r.window.to - r.window.from)}). Tap one to call its receipt.
+            {r.board.length} wallets in the latest {r.window.trades} trades ({span(r.window.to - r.window.from)}). Tap one to replay its trades.
           </p>
         </div>
         <div role="tablist" aria-label="Order" className="flex rounded-lg bg-subtle p-0.5">
@@ -515,37 +544,4 @@ function Board({ r }: { r: TokenReceipts }) {
       )}
     </section>
   );
-}
-
-function simDoc(r: TokenReceipts, s: SimResult, entry: number, exit: number, holdNow: boolean, place: number, bag: number): ReceiptDoc {
-  const { token, series } = r;
-  const rank = RANKS[rankOf(s.roi)];
-  const now = Date.now() / 1000;
-  const held = (holdNow ? now : series[exit]![0]) - series[entry]![0];
-  return {
-    lines: [
-      { t: 'title', text: 'RECEIPTS' },
-      { t: 'center', text: `PAPER TRADE · $${token.symbol}`, muted: true },
-      { t: 'center', text: `${token.chainName.toUpperCase()} · ${dateTime(now)}`, muted: true },
-      { t: 'dash' },
-      { t: 'row', left: 'BUY', right: usd(bag) },
-      { t: 'row', left: '  ON', right: day(series[entry]![0]), muted: true },
-      { t: 'row', left: '  AT', right: price(s.entryPrice), muted: true },
-      { t: 'row', left: 'TOKENS', right: compact(s.tokens) },
-      { t: 'row', left: holdNow ? 'HELD TO' : 'SELL', right: holdNow ? 'NOW' : day(series[exit]![0]) },
-      { t: 'row', left: '  AT', right: price(s.exitPrice), muted: true },
-      { t: 'row', left: 'HELD FOR', right: span(held) },
-      { t: 'dash' },
-      { t: 'row', left: holdNow ? 'WORTH NOW' : 'SOLD FOR', right: usd(s.out) },
-      { t: 'row', left: 'BEST EXIT', right: `${usd(s.bestOut)} · ${day(s.bestTs)}`, muted: true },
-      { t: 'dash' },
-      { t: 'total', left: 'P&L', right: usd(s.pnl, { signed: true }), sub: pct(s.roi, { signed: true }), tone: toneOf(s.pnl) },
-      { t: 'row', left: 'VS RECENT TRADERS', right: `#${place} of ${r.board.length + 1}` },
-      { t: 'rank', name: rank.name, line: rank.line },
-      { t: 'barcode', seed: `${token.address}:${entry}:${exit}` },
-      { t: 'center', text: SITE_HOST, muted: true },
-      { t: 'center', text: 'paper money · not financial advice', muted: true },
-    ],
-    stamp: stampOf(s.pnl),
-  };
 }

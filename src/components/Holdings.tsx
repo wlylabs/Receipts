@@ -41,7 +41,7 @@ export function Holdings({ address }: { address: string }) {
       <h1 className="num truncate text-[22px] font-semibold tracking-tight" title={address}>
         {short(address)}
       </h1>
-      <p className="mt-1 text-[14px] text-muted">Pick a token to pull this wallet’s receipt on it.</p>
+      <p className="mt-1 text-[14px] text-muted">Pick a token to replay this wallet’s trades on it.</p>
 
       <form onSubmit={submit} className="mt-5" noValidate>
         <label htmlFor="ca" className="eyebrow">
@@ -60,7 +60,7 @@ export function Holdings({ address }: { address: string }) {
             spellCheck={false}
             className="num min-w-0 flex-1 bg-transparent text-[14px] outline-none placeholder:text-faint"
           />
-          <button type="submit" className="btn btn-primary h-9 min-h-0 px-3" aria-label="Pull receipts">
+          <button type="submit" className="btn btn-primary h-9 min-h-0 px-3" aria-label="Replay trades">
             <ArrowRight className="size-4" />
           </button>
         </div>

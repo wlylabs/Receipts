@@ -3,29 +3,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowUpRight, Check, Dices, Download, Flame, LineChart, Link2, Loader2, ThumbsDown, ThumbsUp, X } from 'lucide-react';
+import { ArrowUpRight, Check, Dices, Download, FastForward, Flame, LineChart, Link2, Loader2, RotateCcw, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
-import { KEYS, NO_STREAK, RANKS, stampOf, toneOf, type Recent, type Streak } from '../lib/game';
-import { rankOf } from '../lib/receipts';
+import { useReplay } from '../hooks/useReplay';
+import { KEYS, NO_STREAK, RANKS, toneOf, type Recent, type Streak } from '../lib/game';
+import { position, priceAt, rankOf } from '../lib/receipts';
 import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
-import type { Line, ReceiptDoc } from '../lib/receiptDoc';
-import type { TraderReceipts } from '../lib/types';
-import { compact, dateTime, day, pct, price, short, span, usd } from '../lib/format';
+import type { Trade, TraderReceipts } from '../lib/types';
+import { compact, dateTime, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_HOST, SITE_URL } from '../lib/site';
 import { saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
-import { Receipt } from './Receipt';
 import { Failure, Loading } from './States';
 import { Holdings } from './Holdings';
-import { PriceChart } from './PriceChart';
+import { ReplayChart, type Marker } from './ReplayChart';
+import { ResultCard, type Stat } from './ResultCard';
 import { TokenImage } from './TokenImage';
 
 type Call = 'profit' | 'rekt' | 'skip';
-const LINE_MS = 80;
-const MAX_ITEMS = 10;
+const PLAY_MS = 4_200;
 
 export function TraderView({ address, ca }: { address: string; ca: string }) {
   const { state, reload } = useApi<TraderReceipts>(ca ? `/api/trader/${address}/?ca=${encodeURIComponent(ca)}` : null);
@@ -45,29 +44,39 @@ function TraderGame({ r }: { r: TraderReceipts }) {
   const router = useRouter();
   const [now] = useState(() => Date.now() / 1000);
   const [call, setCall] = useState<Call | null>(null);
-  const [shown, setShown] = useState(0);
   const [streak, setStreak] = useStored<Streak>(KEYS.streak, NO_STREAK);
   const [nexting, setNexting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const replay = useReplay(PLAY_MS);
   const scored = useRef(false);
-  const paperRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<HTMLElement>(null);
 
-  const doc = useMemo(() => traderDoc(r), [r]);
   const p = r.position;
-  const { token } = r;
+  const { token, series: full } = r;
   const chain = CHAINS[token.chain];
   const won = p.pnl > 0;
-  const total = doc.lines.length;
-  const done = call !== null && shown >= total;
+  const trades: Trade[] = useMemo(() => r.trades.map(([ts, side, tokens, u, pr, tx]) => ({ ts, side, tokens, usd: u, priceUsd: pr, tx, trader: r.owner })), [r]);
+
+  // the replay runs from the wallet's first trade to now, the chart zoomed in on that stretch
+  const from = Math.max(full[0]?.[0] ?? 0, (trades[0]?.ts ?? 0) - 60);
+  const to = Math.max(full.at(-1)?.[0] ?? 0, trades.at(-1)?.ts ?? 0);
+  const series = useMemo(() => {
+    const lead = from - (to - from) * 0.2;
+    const view = full.filter(([ts]) => ts >= lead);
+    return view.length >= 12 ? view : full.slice(-12);
+  }, [full, from, to]);
+  const started = call !== null;
+  const done = started && !replay.playing;
+  const head = started && replay.t < 1 ? from + (to - from) * replay.t : undefined;
+  const running = useMemo(() => {
+    if (head === undefined) return p.pnl;
+    const seen = trades.filter((t) => t.ts <= head);
+    return seen.length ? position(seen, priceAt(series, head, token.priceUsd)).pnl : 0;
+  }, [head, trades, series, token.priceUsd, p.pnl]);
+  const runTone = toneOf(running);
   const right = call === 'profit' ? won : call === 'rekt' ? !won : null;
 
-  useEffect(() => {
-    if (call === null || shown >= total) return;
-    const id = setTimeout(() => setShown((s) => s + 1), LINE_MS);
-    return () => clearTimeout(id);
-  }, [call, shown, total]);
-
-  // score the call once the receipt has printed
+  // score the call once the replay has played out
   useEffect(() => {
     if (!done || right === null || scored.current) return;
     scored.current = true;
@@ -79,8 +88,8 @@ function TraderGame({ r }: { r: TraderReceipts }) {
 
   const make = (c: Call) => {
     setCall(c);
-    setShown(window.matchMedia('(prefers-reduced-motion: reduce)').matches ? total : 0);
-    if (!window.matchMedia('(min-width: 64rem)').matches) requestAnimationFrame(() => paperRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    replay.play();
+    if (!window.matchMedia('(min-width: 64rem)').matches) requestAnimationFrame(() => chartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   };
 
   const next = async () => {
@@ -96,20 +105,46 @@ function TraderGame({ r }: { r: TraderReceipts }) {
     }
   };
 
+  const rank = RANKS[rankOf(p.roi)];
+  const stats: Stat[] = [
+    { k: 'Put in', v: usd(p.usdIn) },
+    { k: 'Took out', v: usd(p.usdOut) },
+    { k: 'Bag now', v: usd(p.openValue) },
+    { k: 'Trades', v: `${p.buys} buys · ${p.sells} sells` },
+    { k: 'Realized', v: usd(p.realized, { signed: true }), tone: toneOf(p.realized) },
+    { k: 'Unrealized', v: usd(p.unrealized, { signed: true }), tone: toneOf(p.unrealized) },
+    ...(p.missedUsd > 0.005 ? [{ k: 'Sold before top', v: `-${usd(p.missedUsd)}`, tone: 'neg' as const }] : []),
+    ...(r.of > 1 ? [{ k: 'vs traders', v: `#${r.place} of ${r.of}` }] : []),
+  ];
+
   const share = async () => {
-    const rank = RANKS[rankOf(p.roi)].name;
-    const res = await shareLink(`${SITE_URL}${ROUTES.trader(r.owner, token.address)}`, 'Receipts', `Pulled the receipts on ${short(r.owner)} in $${token.symbol}: ${usd(p.pnl, { signed: true })}. Rank: ${rank}.`);
+    const res = await shareLink(`${SITE_URL}${ROUTES.trader(r.owner, token.address)}`, 'Receipts', `Replayed ${short(r.owner)} on $${token.symbol}: ${usd(p.pnl, { signed: true })}. Rank: ${rank.name}. Call yours:`);
     if (res === 'copied') toast('Link copied.');
     else if (res === 'failed') toast('Couldn’t share. Copy the address bar instead.');
   };
 
+  const markers: Marker[] = trades.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side }));
   const save = async () => {
     setSaving(true);
     try {
-      const { receiptPng } = await import('../lib/receiptImage');
-      const blob = await receiptPng(doc, SITE_HOST);
-      const res = await saveFile(new File([blob], `receipt-${r.owner.slice(0, 6)}-${slug(token.symbol)}.png`, { type: 'image/png' }));
-      if (res === 'saved') toast('Receipt saved.');
+      const { cardPng } = await import('../lib/cardImage');
+      const blob = await cardPng({
+        kicker: `WALLET ${short(r.owner)}`,
+        symbol: token.symbol,
+        chainName: token.chainName,
+        pnl: usd(p.pnl, { signed: true }),
+        roi: p.roi === null ? null : pct(p.roi, { signed: true }),
+        tone: toneOf(p.pnl),
+        rank,
+        stats: stats.slice(0, 4),
+        series,
+        from,
+        to,
+        markers: markers.length <= 60 ? markers : [],
+        site: SITE_HOST,
+      });
+      const res = await saveFile(new File([blob], `${r.owner.slice(0, 6)}-${token.symbol.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token'}.png`, { type: 'image/png' }));
+      if (res === 'saved') toast('Image saved.');
     } catch {
       toast('Couldn’t make the image. Try again.');
     } finally {
@@ -117,15 +152,11 @@ function TraderGame({ r }: { r: TraderReceipts }) {
     }
   };
 
-  const markers = r.trades.map(([ts, side, , , pr]) => ({ ts, price: pr, kind: side }));
-
   return (
     <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
-      <header className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="eyebrow">
-            Wallet · {token.chainName}
-          </p>
+      <header className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
+          <p className="eyebrow">Wallet · {token.chainName}</p>
           <h1 className="num truncate text-[20px] font-semibold tracking-tight" title={r.owner}>
             {short(r.owner)}
           </h1>
@@ -145,22 +176,68 @@ function TraderGame({ r }: { r: TraderReceipts }) {
         )}
       </header>
 
-      <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-8">
-        <section className="space-y-4" aria-label="Your call">
-          {call === null ? (
-            <div className="panel p-4 sm:p-5">
-              <Link href={ROUTES.token(token.address)} className="flex items-center gap-3">
-                <TokenImage src={token.image} symbol={token.symbol} className="size-9 text-sm" />
-                <span className="min-w-0">
-                  <span className="block truncate text-[15px] font-semibold">{token.symbol}</span>
-                  <span className="block truncate text-[12.5px] text-muted">
-                    {token.name} · {price(token.priceUsd)}
-                  </span>
+      <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        {/* the chart, where the wallet's trades replay */}
+        <section ref={chartRef} className="panel scroll-mt-20 p-3 sm:p-4" aria-label="Replay">
+          <div className="flex min-h-9 items-center justify-between gap-3 px-1">
+            <Link href={ROUTES.token(token.address)} className="flex min-w-0 items-center gap-2">
+              <TokenImage src={token.image} symbol={token.symbol} className="size-7 text-xs" />
+              <span className="min-w-0">
+                <span className="block truncate text-[14px] font-semibold">{token.symbol}</span>
+                <span className="block truncate text-[12px] text-muted">
+                  {price(token.priceUsd)} · {r.candle} candles
                 </span>
-              </Link>
-              <h2 className="mt-5 text-[22px] font-semibold tracking-tight sm:text-[26px]">Profit or rekt?</h2>
-              <p className="mt-1 text-[14px] text-muted">You see how they played {token.symbol}. Not how it went — call it first.</p>
-              <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-4">
+              </span>
+            </Link>
+            {started ? (
+              <div className="flex items-center gap-2">
+                <p className={cx('num text-[20px] font-semibold tracking-tight', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
+                {replay.playing && (
+                  <button type="button" onClick={replay.skip} className="btn btn-quiet h-8 min-h-0 px-2.5 text-[12.5px]" aria-label="Skip the replay">
+                    <FastForward className="size-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p className="num text-[20px] font-semibold text-faint">$ ???</p>
+            )}
+          </div>
+          <div className="relative mt-3">
+            <ReplayChart series={series} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} hideRun={!started} />
+            {!started && (
+              <div className="absolute inset-0 grid place-items-center">
+                <p className="rounded-lg border border-line bg-surface/90 px-3 py-1.5 text-[13px] font-medium text-muted backdrop-blur-sm">Their trades replay here after your call</p>
+              </div>
+            )}
+          </div>
+
+          {done && (
+            <div className="mt-4 border-t border-line px-1 pt-4" role="status">
+              <ResultCard kicker={`${short(r.owner)} on ${token.symbol}`} pnl={usd(p.pnl, { signed: true })} roi={p.roi === null ? 'no buys seen' : pct(p.roi, { signed: true })} tone={toneOf(p.pnl)} rank={rank} stats={stats}>
+                <div className="mt-4 grid grid-cols-3 gap-2">
+                  <button type="button" onClick={replay.play} className="btn btn-quiet">
+                    <RotateCcw className="size-4" aria-hidden /> <span className="hidden sm:inline">Replay</span>
+                  </button>
+                  <button type="button" onClick={save} disabled={saving} className="btn btn-quiet">
+                    {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
+                    Image
+                  </button>
+                  <button type="button" onClick={share} className="btn btn-quiet">
+                    <Link2 className="size-4" aria-hidden /> Share
+                  </button>
+                </div>
+              </ResultCard>
+            </div>
+          )}
+        </section>
+
+        {/* the call */}
+        <section className="space-y-4" aria-label="Your call">
+          {!started ? (
+            <div className="panel p-4 sm:p-5">
+              <h2 className="text-[20px] font-semibold tracking-tight">Profit or rekt?</h2>
+              <p className="mt-1 text-[13.5px] text-muted">You see how they played {token.symbol}, not how it went. Call it, then watch it replay.</p>
+              <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line">
                 <Clue label="Buys" value={String(p.buys)} />
                 <Clue label="Sells" value={String(p.sells)} />
                 <Clue label="Put in" value={usd(p.usdIn)} />
@@ -175,19 +252,19 @@ function TraderGame({ r }: { r: TraderReceipts }) {
                 </button>
               </div>
               <button type="button" onClick={() => make('skip')} className="mt-2 w-full py-2 text-[13px] text-muted hover:text-ink">
-                Skip the call, just print it
+                Skip the call, just replay
               </button>
             </div>
           ) : (
             <div className={cx('panel p-4 sm:p-5', done && right === true && 'border-pos', done && right === false && 'border-neg')}>
               {!done ? (
                 <p className="flex items-center gap-2 text-[15px] font-medium" role="status">
-                  <Loader2 className="size-4 animate-spin" aria-hidden /> Printing…
+                  <Loader2 className="size-4 animate-spin" aria-hidden /> Replaying…
                 </p>
               ) : (
                 <div className="rise" role="status">
                   {right === null ? (
-                    <p className="text-[20px] font-semibold">Printed.</p>
+                    <p className="text-[20px] font-semibold">Replayed.</p>
                   ) : right ? (
                     <p className="flex items-center gap-2 text-[20px] font-semibold text-pos">
                       <Check className="size-5" aria-hidden /> Called it.
@@ -197,29 +274,17 @@ function TraderGame({ r }: { r: TraderReceipts }) {
                       <X className="size-5" aria-hidden /> Wrong call.
                     </p>
                   )}
-                  <p className="mt-1 text-[14px] text-ink-2">
-                    {won ? 'Up' : p.pnl < 0 ? 'Down' : 'Flat'} <span className={cx('num font-semibold', won ? 'text-pos' : p.pnl < 0 && 'text-neg')}>{usd(p.pnl, { signed: true })}</span> on {token.symbol}
-                    {r.of > 1 && <> · #{r.place} of {r.of} recent traders</>}.
-                    {right !== null && (
-                      <>
-                        {' '}
-                        Streak <b className="num">{streak.current}</b>, best <b className="num">{streak.best}</b>.
-                      </>
-                    )}
-                  </p>
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <button type="button" onClick={next} disabled={nexting} className="btn btn-primary col-span-2 h-11">
+                  {right !== null && (
+                    <p className="mt-1 text-[13.5px] text-ink-2">
+                      Streak <b className="num">{streak.current}</b> · best <b className="num">{streak.best}</b> · {streak.right}/{streak.calls} right
+                    </p>
+                  )}
+                  <div className="mt-4 grid gap-2">
+                    <button type="button" onClick={next} disabled={nexting} className="btn btn-primary h-11">
                       {nexting ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Dices className="size-4" aria-hidden />}
                       Next random trader
                     </button>
-                    <button type="button" onClick={save} disabled={saving} className="btn btn-quiet">
-                      {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
-                      Save image
-                    </button>
-                    <button type="button" onClick={share} className="btn btn-quiet">
-                      <Link2 className="size-4" aria-hidden /> Share
-                    </button>
-                    <Link href={ROUTES.token(token.address)} className="btn btn-quiet col-span-2">
+                    <Link href={ROUTES.token(token.address)} className="btn btn-quiet">
                       <LineChart className="size-4" aria-hidden /> Paper-trade {token.symbol} yourself
                     </Link>
                   </div>
@@ -227,68 +292,53 @@ function TraderGame({ r }: { r: TraderReceipts }) {
               )}
             </div>
           )}
-
-          {done && (
-            <div className="panel p-3 sm:p-4">
-              <p className="eyebrow px-1">
-                {token.symbol} · {r.candle} candles · B buy, S sell
-              </p>
-              <PriceChart series={r.series} markers={markers.length <= 80 ? markers : []} className="mt-3" />
-              <div className="mt-4 max-h-80 overflow-auto rounded-lg border border-line">
-                <table className="w-full min-w-[440px] text-[13px]">
-                  <thead className="sticky top-0 bg-surface text-left text-muted">
-                    <tr className="border-b border-line">
-                      <th className="px-3 py-2 text-[12px] font-medium">Side</th>
-                      <th className="px-3 py-2 text-[12px] font-medium">Time</th>
-                      <th className="px-3 py-2 text-right text-[12px] font-medium">Tokens</th>
-                      <th className="px-3 py-2 text-right text-[12px] font-medium">Value</th>
-                      <th className="px-3 py-2">
-                        <span className="sr-only">Transaction</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-line">
-                    {[...r.trades].reverse().map(([ts, side, tokens, u, , tx], i) => (
-                      <tr key={`${tx}:${i}`}>
-                        <td className={cx('px-3 py-2 font-medium', side === 'buy' ? 'text-pos' : 'text-neg')}>{side === 'buy' ? 'Buy' : 'Sell'}</td>
-                        <td className="num whitespace-nowrap px-3 py-2 text-muted">{dateTime(ts)}</td>
-                        <td className="num px-3 py-2 text-right">{compact(tokens)}</td>
-                        <td className="num px-3 py-2 text-right">{usd(u)}</td>
-                        <td className="px-3 py-2 text-right">
-                          {chain && (
-                            <a href={chain.tx(tx)} target="_blank" rel="noreferrer" className="text-faint hover:text-ink" aria-label="Open the transaction in the explorer">
-                              <ArrowUpRight className="inline size-3.5" />
-                            </a>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
           <p className="text-[12.5px] leading-relaxed text-muted">
             {r.source === 'chain'
-              ? `Read from the chain: every ${token.symbol} transfer in or out of this wallet${r.complete ? '' : ' (latest ones only)'}, priced at the candle of its time. Tokens received as gifts count as buys.`
-              : `Read from ${token.symbol}’s latest ${r.window.trades} DEX trades (${span(r.window.to - r.window.from)}). Earlier trades by this wallet are not in that feed.`}
+              ? `From the chain: every ${token.symbol} transfer in or out of this wallet${r.complete ? '' : ' (latest ones only)'}, priced at the candle of its time. Tokens received as gifts count as buys.`
+              : `From ${token.symbol}’s latest ${r.window.trades} DEX trades (${span(r.window.to - r.window.from)}). Earlier trades by this wallet are not in that feed.`}
           </p>
         </section>
-
-        <div ref={paperRef} className="scroll-mt-20 lg:sticky lg:top-20">
-          {call === null ? (
-            <div className="paper mx-auto grid w-full max-w-[380px] place-items-center px-6 py-16 text-center">
-              <div>
-                <p className="text-lg font-bold tracking-[0.22em]">RECEIPTS</p>
-                <p className="mt-2 text-[12.5px] text-[#71717a]">Make your call to print.</p>
-                <p className="mt-6 text-4xl font-bold text-[#d4d4d8]">? ? ?</p>
-              </div>
-            </div>
-          ) : (
-            <Receipt doc={doc} shown={shown} />
-          )}
-        </div>
       </div>
+
+      {done && (
+        <section className="mt-6" aria-labelledby="trades">
+          <h2 id="trades" className="text-[14px] font-semibold">
+            Trades
+          </h2>
+          <div className="panel mt-2 max-h-96 overflow-auto">
+            <table className="w-full text-[13px]">
+              <thead className="sticky top-0 bg-surface text-left text-muted">
+                <tr className="border-b border-line">
+                  <th className="px-3 py-2 text-[12px] font-medium">Side</th>
+                  <th className="px-3 py-2 text-[12px] font-medium">Time</th>
+                  <th className="hidden px-3 py-2 text-right text-[12px] font-medium sm:table-cell">Tokens</th>
+                  <th className="px-3 py-2 text-right text-[12px] font-medium">Value</th>
+                  <th className="px-3 py-2">
+                    <span className="sr-only">Transaction</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {[...trades].reverse().map((t, i) => (
+                  <tr key={`${t.tx}:${i}`}>
+                    <td className={cx('px-3 py-2 font-medium', t.side === 'buy' ? 'text-pos' : 'text-neg')}>{t.side === 'buy' ? 'Buy' : 'Sell'}</td>
+                    <td className="num whitespace-nowrap px-3 py-2 text-muted">{dateTime(t.ts)}</td>
+                    <td className="num hidden px-3 py-2 text-right sm:table-cell">{compact(t.tokens)}</td>
+                    <td className="num px-3 py-2 text-right">{usd(t.usd)}</td>
+                    <td className="px-3 py-2 text-right">
+                      {chain && (
+                        <a href={chain.tx(t.tx)} target="_blank" rel="noreferrer" className="text-faint hover:text-ink" aria-label="Open the transaction in the explorer">
+                          <ArrowUpRight className="inline size-3.5" />
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }
@@ -300,51 +350,4 @@ function Clue({ label, value }: { label: string; value: string }) {
       <dd className="num mt-0.5 truncate text-[16px] font-semibold">{value}</dd>
     </div>
   );
-}
-
-const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token';
-
-/** The trader's receipt, line by line. */
-function traderDoc(r: TraderReceipts): ReceiptDoc {
-  const p = r.position;
-  const { token } = r;
-  const rank = RANKS[rankOf(p.roi)];
-  const items: Line[] = r.trades.slice(-MAX_ITEMS).map(([ts, side, tokens, u, pr]) => ({
-    t: 'item',
-    name: `${side === 'buy' ? 'BUY ' : 'SELL'} ${compact(tokens)}`,
-    sub: `@ ${price(pr)} · ${day(ts)}`,
-    right: side === 'buy' ? `-${usd(u)}` : `+${usd(u)}`,
-    tone: side === 'buy' ? null : 'pos',
-  }));
-  const earlier = r.trades.length - MAX_ITEMS;
-  return {
-    lines: [
-      { t: 'title', text: 'RECEIPTS' },
-      { t: 'center', text: `WALLET RECEIPT · ${token.chainName.toUpperCase()}`, muted: true },
-      { t: 'center', text: dateTime(Date.now() / 1000), muted: true },
-      { t: 'dash' },
-      { t: 'row', left: 'WALLET', right: short(r.owner) },
-      { t: 'row', left: 'TOKEN', right: `$${token.symbol}` },
-      { t: 'row', left: 'TRADES', right: `${p.buys} buys · ${p.sells} sells` },
-      { t: 'dash' },
-      ...(earlier > 0 ? [{ t: 'row', left: `${earlier} earlier trades`, right: '…', muted: true } as Line] : []),
-      ...items,
-      { t: 'dash' },
-      { t: 'row', left: 'PUT IN', right: usd(p.usdIn) },
-      { t: 'row', left: 'TOOK OUT', right: usd(p.usdOut) },
-      { t: 'row', left: 'BAG NOW', right: usd(p.openValue) },
-      { t: 'row', left: 'REALIZED', right: usd(p.realized, { signed: true }), tone: toneOf(p.realized) },
-      { t: 'row', left: 'UNREALIZED', right: usd(p.unrealized, { signed: true }), tone: toneOf(p.unrealized) },
-      ...(p.missedUsd > 0.005 ? [{ t: 'row', left: 'SOLD BEFORE THE TOP', right: `-${usd(p.missedUsd)}`, tone: 'neg' } as Line] : []),
-      ...(p.unknownSold > 0 ? [{ t: 'row', left: 'SOLD, COST UNKNOWN', right: compact(p.unknownSold), muted: true } as Line] : []),
-      { t: 'dash' },
-      { t: 'total', left: 'P&L', right: usd(p.pnl, { signed: true }), sub: p.roi === null ? 'no buys seen' : pct(p.roi, { signed: true }), tone: toneOf(p.pnl) },
-      ...(r.of > 1 ? [{ t: 'row', left: 'VS RECENT TRADERS', right: `#${r.place} of ${r.of}` } as Line] : []),
-      { t: 'rank', name: rank.name, line: rank.line },
-      { t: 'barcode', seed: `${r.owner}:${token.address}` },
-      { t: 'center', text: SITE_HOST, muted: true },
-      { t: 'center', text: 'not financial advice', muted: true },
-    ],
-    stamp: stampOf(p.pnl),
-  };
 }

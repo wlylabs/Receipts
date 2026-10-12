@@ -3,7 +3,7 @@ import { CHAINS } from '../../../lib/chains';
 import { toTrades } from '../../../lib/receipts';
 import { fail } from '../../../lib/respond';
 
-/** A real wallet that traded a token DexScreener is boosting right now, for "pull a random receipt". */
+/** A real wallet that traded a token DexScreener is boosting right now, for "next random trader". */
 export async function GET() {
   try {
     const tokens = (await boostedTokens()).filter((t) => CHAINS[t.chainId]);
