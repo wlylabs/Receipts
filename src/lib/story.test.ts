@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { paperVerdict, walletVerdict } from './story';
+import { marketVerdict, paperVerdict, sinceLaunch, walletVerdict } from './story';
 
 const base = { holdNow: true, usd: 100 };
 const $ = (n: number) => `$${Math.round(n)}`;
@@ -21,5 +21,20 @@ describe('wallet words', () => {
     expect(walletVerdict({ ...w, pnl: 1000, roi: 2 }, $)).toBe('3x on what went in');
     expect(walletVerdict({ ...w, pnl: -100, roi: -0.2, unrealized: -100, openValue: 300 }, $)).toBe('Still holding the bag');
     expect(walletVerdict({ ...w, pnl: -100, roi: -0.2 }, $)).toBe('Paid the market');
+  });
+});
+
+describe('market words', () => {
+  it('says how the run went', () => {
+    expect(marketVerdict({ launch: 1, now: 41, ath: 42 })).toBe('41x since launch, at the top');
+    expect(marketVerdict({ launch: 1, now: 5, ath: 20 })).toBe('5x since launch, 75% off the top');
+    expect(marketVerdict({ launch: 1, now: 1.2, ath: 8 })).toBe('Was 8x, gave most of it back');
+    expect(marketVerdict({ launch: 1, now: 0.3, ath: 6 })).toBe('Was 6x, now under its launch');
+    expect(marketVerdict({ launch: 1, now: 0.6, ath: 1.1 })).toBe('Down 40% since launch');
+  });
+  it('says how far it came', () => {
+    expect(sinceLaunch({ launch: 1, now: 42 })).toBe('42x');
+    expect(sinceLaunch({ launch: 1, now: 1.5 })).toBe('+50%');
+    expect(sinceLaunch({ launch: 1, now: 0.25 })).toBe('−75%');
   });
 });

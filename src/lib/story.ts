@@ -51,3 +51,31 @@ export function walletVerdict(s: WalletStory, money: (n: number) => string): str
   if (s.pnl < 0) return 'Paid the market';
   return 'Broke even';
 }
+
+export interface MarketStory {
+  /** Price now, at launch and at the top, in any one unit. */
+  now: number;
+  launch: number;
+  ath: number;
+}
+
+/** How far a token has come since launch: "42x" from 2x up, else a signed percent. */
+export function sinceLaunch(s: Pick<MarketStory, 'now' | 'launch'>): string {
+  const x = s.now / s.launch;
+  if (x >= 2) return mult(x);
+  const d = x - 1;
+  return `${d > 0 ? '+' : d < 0 ? '−' : ''}${pctAbs(d)}`;
+}
+
+/** One line on a token's whole run, launch to now. */
+export function marketVerdict(s: MarketStory): string {
+  const now = s.now / s.launch;
+  const top = s.ath / s.launch;
+  const off = 1 - s.now / s.ath;
+  if (off < 0.1 && now >= 2) return `${mult(now)} since launch, at the top`;
+  if (off < 0.1) return 'At its all-time high';
+  if (now >= 2) return `${mult(now)} since launch, ${pctAbs(off)} off the top`;
+  if (now >= 1) return top >= 2 ? `Was ${mult(top)}, gave most of it back` : `Up ${pctAbs(now - 1)} since launch`;
+  if (top >= 2) return `Was ${mult(top)}, now under its launch`;
+  return `Down ${pctAbs(now - 1)} since launch`;
+}

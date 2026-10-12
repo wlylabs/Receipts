@@ -9,7 +9,7 @@ import { cx } from '../lib/cx';
 import { Sheet } from './Sheet';
 
 /** A button that opens the video maker: pick a size and a length, watch it, download it. */
-export function VideoExport({ video, fileBase, className }: { video: ReplayVideo; fileBase: string; className?: string }) {
+export function VideoExport({ video, fileBase, className, title }: { video: ReplayVideo; fileBase: string; className?: string; title?: string }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   return (
@@ -17,7 +17,7 @@ export function VideoExport({ video, fileBase, className }: { video: ReplayVideo
       <button type="button" onClick={() => setOpen(true)} className={cx('btn', className ?? 'btn-quiet')}>
         <Clapperboard className="size-4" aria-hidden /> Video
       </button>
-      <VideoSheet video={video} fileBase={fileBase} open={open} onClose={close} />
+      <VideoSheet video={video} fileBase={fileBase} open={open} onClose={close} title={title} />
     </>
   );
 }

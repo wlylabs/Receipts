@@ -60,8 +60,10 @@ export interface ReplayVideo {
   markers: Marker[];
   /** One per trade, shown in the story cut as the playhead passes it. */
   captions: Caption[];
-  /** The P&L in USD with the playhead at a time. */
+  /** The P&L in USD with the playhead at a time; its sign colours the counter. */
   pnlAt: (ts: number) => number;
+  /** What the counter reads with the playhead at a time, e.g. the market cap; the P&L when left out. */
+  counter?: (ts: number) => string;
   pnl: number;
   pnlText: string;
   roiText: string | null;
@@ -385,10 +387,11 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   // the counter
   if (playing && out > 0) {
     A(easeOut((time - T.hook) / 0.3) * out);
-    fit(g, v.money(running), Math.round(L.counter.size * (1 + 0.1 * punch)), 650, L.counter.align === 'right' ? W - pad * 2 - sw - 260 : W - pad * 2);
+    const text = v.counter ? v.counter(head) : v.money(running);
+    fit(g, text, Math.round(L.counter.size * (1 + 0.1 * punch)), 650, L.counter.align === 'right' ? W - pad * 2 - sw - 260 : W - pad * 2);
     g.textAlign = L.counter.align;
     g.fillStyle = color;
-    g.fillText(v.money(running), L.counter.x, L.counter.y);
+    g.fillText(text, L.counter.x, L.counter.y);
     A(1);
   }
 
