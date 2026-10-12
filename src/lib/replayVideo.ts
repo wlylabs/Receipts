@@ -92,11 +92,63 @@ const easeBack = (x: number) => {
   return 1 + (c + 1) * (v - 1) ** 3 + c * (v - 1) ** 2;
 };
 
-/** How far the playhead has run, 0 to 1. The story cut keeps a steadier pace so captions can be read. */
-export function playAt(time: number, l: VideoLength = 'short'): number {
+/** What the timing needs of a run: its stretch and, for the slow motion, its trades. */
+type Run = Pick<ReplayVideo, 'from' | 'to'> & { markers?: readonly Marker[] };
+
+/** How much slower the replay runs right on a trade, and over how much of the run it eases back. */
+const SLOW = 2.4;
+const SLOW_WIDTH = 0.035;
+const WARP_STEPS = 512;
+const warps = new WeakMap<object, Float64Array | null>();
+
+/**
+ * Slow motion around trades, as a table: the share of the replay's time spent by each point of the
+ * run, which rises near every trade. Null when there are no trades to slow down for.
+ */
+function warpTable(v: Run): Float64Array | null {
+  if (warps.has(v)) return warps.get(v)!;
+  const span = Math.max(1, v.to - v.from);
+  const at = (v.markers ?? []).map((m) => (m.ts - v.from) / span).filter((u) => u >= 0 && u <= 1);
+  let table: Float64Array | null = null;
+  if (at.length) {
+    table = new Float64Array(WARP_STEPS + 1);
+    for (let i = 1; i <= WARP_STEPS; i++) {
+      const u = (i - 0.5) / WARP_STEPS;
+      let w = 1;
+      for (const a of at) w += SLOW * Math.exp(-(((u - a) / SLOW_WIDTH) ** 2));
+      table[i] = table[i - 1]! + w;
+    }
+    const total = table[WARP_STEPS]!;
+    for (let i = 0; i <= WARP_STEPS; i++) table[i] = table[i]! / total;
+  }
+  warps.set(v, table);
+  return table;
+}
+
+/** The point of the run reached once a share `x` of the replay's time has passed. */
+function warp(x: number, table: Float64Array | null): number {
+  if (!table || x <= 0 || x >= 1) return clamp01(x);
+  let lo = 0;
+  let hi = WARP_STEPS;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (table[mid]! <= x) lo = mid;
+    else hi = mid;
+  }
+  const a = table[lo]!;
+  const b = table[hi]!;
+  return (lo + (x - a) / Math.max(1e-12, b - a)) / WARP_STEPS;
+}
+
+/**
+ * How far the playhead has run, 0 to 1. The story cut keeps a steadier pace so captions can be
+ * read; given the run, the replay slows down as it reaches each trade.
+ */
+export function playAt(time: number, l: VideoLength = 'short', v?: Run): number {
   const T = LENGTHS[l];
   const x = (time - T.hook) / (T.play - T.hook);
-  return l === 'story' ? clamp01(x) * 0.5 + easeInOut(x) * 0.5 : easeInOut(x);
+  const eased = l === 'story' ? clamp01(x) * 0.5 + easeInOut(x) * 0.5 : easeInOut(x);
+  return v ? warp(eased, warpTable(v)) : eased;
 }
 
 export function revealAt(time: number, l: VideoLength = 'short'): number {
@@ -104,14 +156,14 @@ export function revealAt(time: number, l: VideoLength = 'short'): number {
 }
 
 /** The time in the video at which the playhead reaches a timestamp of the run. */
-export function timeOf(ts: number, v: Pick<ReplayVideo, 'from' | 'to'>, l: VideoLength): number {
+export function timeOf(ts: number, v: Run, l: VideoLength): number {
   const T = LENGTHS[l];
   const target = (ts - v.from) / Math.max(1, v.to - v.from);
   let lo = T.hook;
   let hi = T.play;
   for (let i = 0; i < 30; i++) {
     const mid = (lo + hi) / 2;
-    if (playAt(mid, l) < target) lo = mid;
+    if (playAt(mid, l, v) < target) lo = mid;
     else hi = mid;
   }
   return hi;
@@ -184,30 +236,91 @@ function fit(g: CanvasRenderingContext2D, text: string, size: number, weight: nu
 /** Width kept at the chart's right for the price axis. */
 const axisW = (L: Layout) => (L.H > L.W ? 190 : 170);
 
-function geometry(v: ReplayVideo, L: Layout) {
+/** What the chart frames: a stretch of time and a band of prices (as logs). */
+interface View {
+  ta: number;
+  tb: number;
+  llo: number;
+  lhi: number;
+}
+
+/** The whole chart. */
+function fullView(v: ReplayVideo): View {
   const s = v.series.filter(([, p]) => p > 0);
   const c = v.candles;
-  const t0 = c[0]?.[0] ?? s[0]?.[0] ?? v.from;
-  const t1 = Math.max((c.at(-1)?.[0] ?? s.at(-1)?.[0] ?? v.to) + (c.length ? v.step : 0), v.to);
-  const { lo, hi } = range(c, [...s.map(([, p]) => p), ...v.markers.filter((m) => m.ts >= t0).map((m) => m.price), v.entry ?? 0]);
-  const llo = Math.log(lo);
-  const lhi = Math.log(hi);
+  const ta = c[0]?.[0] ?? s[0]?.[0] ?? v.from;
+  const tb = Math.max((c.at(-1)?.[0] ?? s.at(-1)?.[0] ?? v.to) + (c.length ? v.step : 0), v.to);
+  const { lo, hi } = range(c, [...s.map(([, p]) => p), ...v.markers.filter((m) => m.ts >= ta).map((m) => m.price), v.entry ?? 0]);
+  return { ta, tb, llo: Math.log(lo), lhi: Math.log(hi) };
+}
+
+/** How much closer than the whole chart the camera gets while it follows the playhead. */
+const ZOOM = 2.6;
+
+/** The camera on the playhead: the latest candles, the playhead a little right of centre. `wide` pulls it back. */
+function followView(v: ReplayVideo, full: View, head: number, wide = 1): View {
+  const w = Math.max((full.tb - full.ta) / ZOOM, v.step * 14) * wide;
+  let tb = head + w * 0.3;
+  let ta = tb - w;
+  if (ta < full.ta) [ta, tb] = [full.ta, full.ta + w];
+  const seen = upTo(v.candles, v.step, head).filter((k) => k[0] + v.step >= ta);
+  const { lo, hi } = range(seen.length ? seen : v.candles, v.markers.filter((m) => m.ts >= ta && m.ts <= head).map((m) => m.price));
+  const d = Math.max(Math.log(hi) - Math.log(lo), 0.04);
+  // room above and below for the trade markers
+  return { ta, tb, llo: Math.log(lo) - d * 0.16, lhi: Math.log(hi) + d * 0.16 };
+}
+
+/** How close the camera is, 1 (on the playhead) to 0 (the whole chart): it pulls back out before the reveal. */
+export function zoomAt(time: number, l: VideoLength = 'short'): number {
+  const T = LENGTHS[l];
+  return 1 - easeInOut((time - (T.play - 1)) / 1);
+}
+
+/**
+ * The camera at a moment: the whole chart blended toward the follow view. The follow view is
+ * averaged over the last half second of the run so the frame drifts instead of jumping when a
+ * new high comes in or an old candle leaves.
+ */
+function cameraAt(v: ReplayVideo, full: View, time: number, l: VideoLength): View {
+  const z = zoomAt(time, l);
+  if (z <= 0) return full;
+  const T = LENGTHS[l];
+  // a slow push in over the opening
+  const wide = 1 + 0.3 * (1 - easeInOut(time / (T.hook + 1)));
+  const n = 8;
+  const f = { ta: 0, tb: 0, llo: 0, lhi: 0 };
+  for (let i = 0; i < n; i++) {
+    const t = Math.max(T.hook, time - i * 0.07);
+    const head = v.from + (v.to - v.from) * playAt(t, l, v);
+    const k = followView(v, full, head, wide);
+    f.ta += k.ta / n;
+    f.tb += k.tb / n;
+    f.llo += k.llo / n;
+    f.lhi += k.lhi / n;
+  }
+  const mix = (a: number, b: number) => a + (b - a) * z;
+  return { ta: mix(full.ta, f.ta), tb: mix(full.tb, f.tb), llo: mix(full.llo, f.llo), lhi: mix(full.lhi, f.lhi) };
+}
+
+function geometry(v: ReplayVideo, L: Layout, view: View = fullView(v)) {
+  const s = v.series.filter(([, p]) => p > 0);
+  const { ta, tb, llo, lhi } = view;
   const { x0, y0, y1 } = L.chart;
   const x1 = L.chart.x1 - axisW(L);
-  const X = (ts: number) => x0 + ((ts - t0) / Math.max(1, t1 - t0)) * (x1 - x0);
-  const level = (p: number) => (Math.log(Math.max(p, lo)) - llo) / Math.max(1e-9, lhi - llo);
+  const X = (ts: number) => x0 + ((ts - ta) / Math.max(1, tb - ta)) * (x1 - x0);
+  const level = (p: number) => (Math.log(Math.max(p, 1e-300)) - llo) / Math.max(1e-9, lhi - llo);
   const Y = (p: number) => y1 - level(p) * (y1 - y0);
   const at = (ts: number) => {
     if (!s.length) return 0;
     if (ts <= s[0]![0]) return s[0]![1];
     for (let i = 1; i < s.length; i++) {
-      const [ta, pa] = s[i - 1]!;
-      const [tb, pb] = s[i]!;
-      if (ts <= tb) return pa + ((pb - pa) * (ts - ta)) / Math.max(1, tb - ta);
+      const [sa, pa] = s[i - 1]!;
+      const [sb, pb] = s[i]!;
+      if (ts <= sb) return pa + ((pb - pa) * (ts - sa)) / Math.max(1, sb - sa);
     }
     return s.at(-1)![1];
   };
-  return { s, t0, x1, X, Y, at, level, ticks: logTicks(lo * v.scale, hi * v.scale, 4).map((t) => t / v.scale) };
+  return { s, t0: v.candles[0]?.[0] ?? s[0]?.[0] ?? v.from, x1, X, Y, at, level, ticks: logTicks(Math.exp(llo) * v.scale, Math.exp(lhi) * v.scale, 4).map((t) => t / v.scale) };
 }
 
 /** One frame at `time` seconds. */
@@ -221,8 +334,8 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   const T = LENGTHS[l];
   const L = layout(f);
   const { W, H, pad } = L;
-  const geo = geometry(v, L);
-  const p = playAt(time, l);
+  const geo = geometry(v, L, cameraAt(v, fullView(v), time, l));
+  const p = playAt(time, l, v);
   const head = v.from + (v.to - v.from) * p;
   const playing = time >= T.hook;
   const running = playing ? v.pnlAt(head) : 0;
@@ -230,9 +343,27 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   const r = revealAt(time, l);
   const A = (a: number) => (g.globalAlpha = alpha * a);
 
+  // the punch: a jolt that fades fast each time a trade lands
+  let punch = 0;
+  let punched: Marker | null = null;
+  if (playing && r < 1) {
+    for (const m of v.markers) {
+      const dt = time - timeOf(Math.max(m.ts, v.from), v, l);
+      const k = dt >= 0 ? Math.exp(-dt / 0.22) : 0;
+      if (k > punch) [punch, punched] = [k, m];
+    }
+    punch *= 1 - r;
+  }
+
   A(1);
   g.fillStyle = BG;
   g.fillRect(0, 0, W, H);
+  if (punched && punch > 0.01) {
+    A(0.06 * punch);
+    g.fillStyle = punched.kind === 'buy' ? POS : NEG;
+    g.fillRect(0, 0, W, H);
+    A(1);
+  }
   g.textBaseline = 'alphabetic';
 
   // the ticker
@@ -253,7 +384,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   // the counter
   if (playing && r < 1) {
     A(easeOut((time - T.hook) / 0.3) * (1 - r));
-    fit(g, v.money(running), L.counter.size, 650, L.counter.align === 'right' ? W - pad * 2 - sw - 260 : W - pad * 2);
+    fit(g, v.money(running), Math.round(L.counter.size * (1 + 0.1 * punch)), 650, L.counter.align === 'right' ? W - pad * 2 - sw - 260 : W - pad * 2);
     g.textAlign = L.counter.align;
     g.fillStyle = color;
     g.fillText(v.money(running), L.counter.x, L.counter.y);
@@ -292,10 +423,12 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   const shown = upTo(v.candles, v.step, shownTo);
   const nowPrice = shown.at(-1)?.[4] ?? geo.at(shownTo);
   const tagYs = [geo.Y(nowPrice), ...(v.entry && v.entry > 0 ? [geo.Y(v.entry)] : [])];
+  const inView = (pr: number) => geo.Y(pr) >= y0 - 20 && geo.Y(pr) <= y1 + 20;
   g.lineWidth = 2;
   font(g, Math.round(24 * big), 500);
   g.textAlign = 'left';
   for (const t of geo.ticks) {
+    if (!inView(t)) continue;
     g.strokeStyle = LINE;
     g.beginPath();
     g.moveTo(x0, geo.Y(t));
@@ -305,10 +438,25 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.fillStyle = MUTED;
     g.fillText(v.label(t * v.scale), axisX, geo.Y(t) + 8);
   }
+  // the chart is cut to its frame, so candles the camera has left slide out of it
+  g.save();
+  g.beginPath();
+  g.rect(x0, y0 - 110, px1 - x0, y1 - y0 + 140);
+  g.clip();
+  if (punched && punch > 0.01) {
+    // the frame jolts in on the trade that just landed
+    const c = candleAt(v.candles, v.step, punched.ts);
+    const fx = geo.X(c ? c[0] + v.step / 2 : punched.ts);
+    const fy = geo.Y(punched.price);
+    const z = 1 + 0.06 * punch;
+    g.translate(fx, fy);
+    g.scale(z, z);
+    g.translate(-fx, -fy);
+  }
   if (playing && head > v.from) {
     A(0.06);
     g.fillStyle = color;
-    g.fillRect(geo.X(v.from), y0 - 20, geo.X(head) - geo.X(v.from), y1 - y0 + 40);
+    g.fillRect(geo.X(v.from), y0 - 110, geo.X(head) - geo.X(v.from), y1 - y0 + 140);
     A(1);
   }
   drawCandles(g, shown, v.step, geo.X, geo.Y, { up: POS, down: NEG, body: 0.68 });
@@ -324,8 +472,9 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
       drawMarker(g, geo.X(c ? c[0] + v.step / 2 : m.ts), py, m, k, big);
     }
   }
+  g.restore();
 
-  if (v.entry && v.entry > 0 && Math.abs(geo.Y(v.entry) - geo.Y(nowPrice)) > 44 * big) tag(v.entry, INK2, v.label(v.entry * v.scale));
+  if (v.entry && v.entry > 0 && inView(v.entry) && Math.abs(geo.Y(v.entry) - geo.Y(nowPrice)) > 44 * big) tag(v.entry, INK2, v.label(v.entry * v.scale));
   tag(nowPrice, playing ? color : INK, v.label(nowPrice * v.scale));
 
   // the playhead's date, under the chart
@@ -483,7 +632,7 @@ export function soundCues(v: ReplayVideo, l: VideoLength): Cue[] {
   const geo = geometry(v, layout('square'));
   const cues: Cue[] = [{ t: 0.02, kind: 'hook' }];
   for (let t = T.hook; t < T.play; t += l === 'story' ? 0.16 : 0.11) {
-    const head = v.from + (v.to - v.from) * playAt(t, l);
+    const head = v.from + (v.to - v.from) * playAt(t, l, v);
     cues.push({ t, kind: 'tick', pitch: geo.level(geo.at(head)) });
   }
   for (const m of v.markers) if (m.ts <= v.to) cues.push({ t: timeOf(Math.max(m.ts, v.from), v, l), kind: m.kind });
