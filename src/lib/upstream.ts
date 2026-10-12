@@ -81,11 +81,6 @@ export async function poolTrades(chain: string, pool: string): Promise<GtTrade[]
   return (await gt<{ data?: GtTrade[] }>(`networks/${net}/pools/${pool}/trades`)).data ?? [];
 }
 
-/** Tokens being promoted on DexScreener right now, for "pull a random receipt". */
-export async function boostedTokens(): Promise<{ chainId: string; tokenAddress: string }[]> {
-  return get<{ chainId: string; tokenAddress: string }[]>(`${DS}/token-boosts/top/v1`);
-}
-
 /** Pairs for up to 30 tokens on one chain at once. */
 export async function pairsFor(chain: string, addresses: string[]): Promise<DsPair[]> {
   const out: DsPair[] = [];
