@@ -24,10 +24,6 @@
   --neg: #dc2626;
   --neg-wash: #fef2f2;
   --on-ink: #ffffff;
-  --paper: #ffffff;
-  --paper-ink: #18181b;
-  --paper-muted: #71717a;
-  --paper-line: #d4d4d8;
   --ring: #2563eb;
   color-scheme: light;
 }
@@ -178,77 +174,21 @@ body {
   background: var(--surface);
 }
 
-/* ---------- the receipt ---------- */
-
-.paper {
-  position: relative;
-  background: var(--paper);
-  color: var(--paper-ink);
-  font-family: var(--font-mono);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.06),
-    0 12px 32px -12px rgba(0, 0, 0, 0.18);
-  --tooth: 6px;
-  margin: var(--tooth) 0;
-}
-.paper::before,
-.paper::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: var(--tooth);
-  background: linear-gradient(-45deg, var(--paper) calc(var(--tooth) / 1.42), transparent 0) 0 0 / calc(var(--tooth) * 2) var(--tooth) repeat-x,
-    linear-gradient(45deg, var(--paper) calc(var(--tooth) / 1.42), transparent 0) 0 0 / calc(var(--tooth) * 2) var(--tooth) repeat-x;
-}
-.paper::before {
-  top: calc(var(--tooth) * -1);
-  transform: rotate(180deg);
-}
-.paper::after {
-  bottom: calc(var(--tooth) * -1);
-}
-
-.dash {
-  border-top: 1px dashed var(--paper-line);
-}
-
-.stamp {
-  font-family: var(--font-mono);
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  border: 2px solid currentColor;
-  border-radius: 6px;
-  padding: 0.1em 0.5em;
-  transform: rotate(-8deg);
-}
-
-@keyframes print-line {
-  from {
-    opacity: 0;
-    transform: translateY(-3px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-.print-in {
-  animation: print-line 180ms ease-out both;
-}
-
-@keyframes stamp-in {
+@keyframes pop-in {
   0% {
     opacity: 0;
-    transform: rotate(-8deg) scale(1.8);
+    transform: translate(-50%, -50%) scale(0.2);
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.25);
   }
   100% {
-    opacity: 0.9;
-    transform: rotate(-8deg) scale(1);
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
   }
 }
-.stamp-in {
-  animation: stamp-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+.pop-in {
+  animation: pop-in 260ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
 
 @keyframes shimmer {

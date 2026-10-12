@@ -8,7 +8,7 @@ import type { DsPair, Holding, WalletHoldings } from '../../../../lib/types';
 
 const MAX = 60;
 
-/** The tokens a wallet holds that trade on a DEX, biggest first, to pick one to pull receipts on. */
+/** The tokens a wallet holds that trade on a DEX, biggest first, to pick one to replay. */
 export async function GET(_req: Request, ctx: { params: Promise<{ address: string }> }) {
   const { address } = await ctx.params;
   if (!isWallet(address)) return fail('invalid', 'That is not a wallet address.');

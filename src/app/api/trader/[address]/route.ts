@@ -10,7 +10,7 @@ import type { Trade, TraderReceipts } from '../../../../lib/types';
 export const maxDuration = 60;
 
 /**
- * One wallet's receipt on one token. The chain itself is read where a free source has it
+ * One wallet's trades and P&L on one token. The chain itself is read where a free source has it
  * (Solana RPC, Blockscout); elsewhere, and when that fails, the token's latest DEX trades.
  */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ address: string }> }) {
