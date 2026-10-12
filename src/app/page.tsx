@@ -49,7 +49,7 @@ export default async function HomePage({ searchParams }: Props) {
           <Omnibox />
         </div>
         <div className="mt-4 grid gap-2 text-left sm:grid-cols-2">
-          <Mode icon={<LineChart className="size-4" />} title="Token CA" body="See its all-time chart and its top 3 gainers and losers, ready to copy or replay as a video." />
+          <Mode icon={<LineChart className="size-4" />} title="Token CA" body="See the market right now, every candle, and its top 3 gainers and losers, ready to copy or turn into a video." />
           <Mode icon={<History className="size-4" />} title="Wallet address" body="Pick a token they traded, watch their trades replay on the chart, then turn it into a video." />
         </div>
       </section>

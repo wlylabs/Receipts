@@ -6,29 +6,25 @@ import { ArrowLeft, ArrowUpRight, FastForward, Link2, Loader2, RotateCcw } from 
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { useReplay } from '../hooks/useReplay';
-import { KEYS, RANKS, toneOf, type Recent } from '../lib/game';
-import { position, priceAt, rankOf, supplyOf } from '../lib/receipts';
-import { bucket, mergeMarkers } from '../lib/candles';
+import { KEYS, toneOf, type Recent } from '../lib/game';
+import { position, priceAt } from '../lib/receipts';
+import { traderStory } from '../lib/traderVideo';
 import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
-import type { Trade, TraderReceipts } from '../lib/types';
-import { date, dateTime, day, mcap, pct, price, short, span, usd } from '../lib/format';
+import type { TraderReceipts } from '../lib/types';
+import { date, mcap, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_URL } from '../lib/site';
 import { shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import { Failure, Loading } from './States';
 import { Holdings } from './Holdings';
-import { ReplayChart, type Marker } from './ReplayChart';
-import { ResultCard, type Stat } from './ResultCard';
+import { ReplayChart } from './ReplayChart';
+import { ResultCard } from './ResultCard';
 import { VideoExport } from './VideoExport';
-import type { ReplayVideo } from '../lib/replayVideo';
-import { walletVerdict } from '../lib/story';
 import { TokenImage } from './TokenImage';
 
 const PLAY_MS = 4_200;
-/** Most candles drawn at once. */
-const CANDLES = 80;
 
 export function TraderView({ address, ca }: { address: string; ca: string }) {
   const { state, reload } = useApi<TraderReceipts>(ca ? `/api/trader/${address}/?ca=${encodeURIComponent(ca)}` : null);
@@ -50,21 +46,9 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
   const replay = useReplay(PLAY_MS, true);
 
   const p = r.position;
-  const { token, series: full } = r;
+  const { token, series } = r;
   const chain = CHAINS[token.chain];
-  const trades: Trade[] = useMemo(() => r.trades.map(([ts, side, tokens, u, pr, tx]) => ({ ts, side, tokens, usd: u, priceUsd: pr, tx, trader: r.owner })), [r]);
-
-  // the replay runs from the wallet's first trade to now, over the token's whole history
-  const series = full;
-  const from = Math.max(full[0]?.[0] ?? 0, (trades[0]?.ts ?? 0) - 60);
-  const to = Math.max(full.at(-1)?.[0] ?? 0, trades.at(-1)?.ts ?? 0);
-  // every candle since launch, merged down to a count that stays readable on a phone
-  const chart = useMemo(() => bucket(r.candles, CANDLES), [r.candles]);
-  // DEX traders read market cap more than price: the supply turns one into the other
-  const supply = supplyOf(token);
-  const scale = supply || 1;
-  const label = supply ? mcap : price;
-  const at = (pr: number) => (supply ? `${mcap(pr * supply)} MC` : price(pr));
+  const { trades, chart, markers, stats, rank, from, to, supply, scale, label, video, fileBase } = useMemo(() => traderStory(r), [r]);
   const done = !replay.playing;
   const head = replay.t < 1 ? from + (to - from) * replay.t : undefined;
   const running = useMemo(() => {
@@ -73,67 +57,10 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     return seen.length ? position(seen, priceAt(series, head, token.priceUsd)).pnl : 0;
   }, [head, trades, series, token.priceUsd, p.pnl]);
   const runTone = toneOf(running);
-  const rank = RANKS[rankOf(p.roi)];
-  const firstBuy = trades.find((t) => t.side === 'buy');
-  const lastSell = trades.filter((t) => t.side === 'sell').at(-1);
-  const stats: Stat[] = [
-    { k: 'Put in', v: usd(p.usdIn) },
-    { k: 'Took out', v: usd(p.usdOut) },
-    { k: p.buys > 1 ? 'First buy' : 'Bought', v: firstBuy ? dateTime(firstBuy.ts) : '-' },
-    { k: p.sells > 1 ? 'Last sell' : 'Sold', v: lastSell ? dateTime(lastSell.ts) : 'Still holding' },
-    { k: 'Bag now', v: usd(p.openValue) },
-    { k: 'Trades', v: `${p.buys} buys · ${p.sells} sells` },
-    { k: 'Realized', v: usd(p.realized, { signed: true }), tone: toneOf(p.realized) },
-    { k: 'Unrealized', v: usd(p.unrealized, { signed: true }), tone: toneOf(p.unrealized) },
-    ...(p.missedUsd > 0.005 ? [{ k: 'Sold before top', v: `-${usd(p.missedUsd)}`, tone: 'neg' as const }] : []),
-    ...(r.of > 1 ? [{ k: 'vs traders', v: `#${r.place} of ${r.of}` }] : []),
-  ];
-
   const share = async () => {
     const res = await shareLink(`${SITE_URL}${ROUTES.trader(r.owner, token.address)}`, 'Receipts', `Replayed ${short(r.owner)} on $${token.symbol}: ${usd(p.pnl, { signed: true })}. Rank: ${rank.name}.`);
     if (res === 'copied') toast('Link copied.');
     else if (res === 'failed') toast('Couldn’t share. Copy the address bar instead.');
-  };
-
-  const fileBase = `${r.owner.slice(0, 6)}-${token.symbol.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token'}`;
-  // one marker per candle, so trades close together do not pile up
-  const markers: Marker[] = useMemo(
-    () =>
-      mergeMarkers(
-        trades.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side })),
-        chart.candles,
-        chart.step,
-      ),
-    [trades, chart],
-  );
-  const money = (n: number) => usd(n, { signed: true });
-  const story = { buys: p.buys, sells: p.sells, usdIn: p.usdIn, pnl: p.pnl, roi: p.roi, realized: p.realized, unrealized: p.unrealized, openValue: p.openValue, missedUsd: p.missedUsd };
-  const video: ReplayVideo = {
-    kicker: short(r.owner),
-    symbol: token.symbol,
-    chainName: token.chainName,
-    verdict: walletVerdict(story, (n) => usd(n)),
-    series,
-    candles: chart.candles,
-    step: chart.step,
-    from,
-    to,
-    markers: markers.length <= 60 ? markers : [],
-    captions: trades.map((t) => ({ ts: t.ts, text: `${t.side === 'buy' ? 'Buy' : 'Sell'} ${usd(t.usd)} at ${at(t.priceUsd)}`, tone: t.side === 'buy' ? ('pos' as const) : ('neg' as const) })),
-    pnlAt: (ts) => {
-      if (ts >= to) return p.pnl;
-      const seen = trades.filter((t) => t.ts <= ts);
-      return seen.length ? position(seen, priceAt(series, ts, token.priceUsd)).pnl : 0;
-    },
-    pnl: p.pnl,
-    pnlText: usd(p.pnl, { signed: true }),
-    roiText: p.roi === null ? null : pct(p.roi, { signed: true }),
-    rank,
-    stats: stats.slice(0, 4),
-    money,
-    scale,
-    label,
-    date: day,
   };
 
   return (
