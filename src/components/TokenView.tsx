@@ -507,8 +507,8 @@ function Scrub({
 
 /** Rows shown before "show all", so the page ends near the ticket. */
 const ROWS = 5;
-/** Wallets kept on each side of the board. */
-const SIDE = 10;
+/** Wallets shown on each side of the board. */
+const SIDE = 3;
 
 /** The traders' board (winners beside losers) and this browser's own trades on the token, one tab at a time. */
 function Board({ r, mine, children }: { r: TokenReceipts; mine: number; children: (more: boolean) => React.ReactNode }) {
@@ -517,7 +517,7 @@ function Board({ r, mine, children }: { r: TokenReceipts; mine: number; children
   const side = tab === 'mine' && mine === 0 ? 'traders' : tab;
   const winners = r.board.filter((w) => w.pnl > 0).slice(0, SIDE);
   const losers = r.board.filter((w) => w.pnl < 0).reverse().slice(0, SIDE);
-  const total = side === 'mine' ? mine : Math.max(winners.length, losers.length);
+  const total = side === 'mine' ? mine : 0;
   const tabs = [
     { id: 'traders' as const, label: 'Traders' },
     ...(mine > 0 ? [{ id: 'mine' as const, label: `Mine · ${mine}` }] : []),
@@ -559,8 +559,8 @@ function Board({ r, mine, children }: { r: TokenReceipts; mine: number; children
         <p className="panel mt-2 px-4 py-6 text-[13px] text-muted">No recent trades in the feed.</p>
       ) : (
         <div className="mt-2 grid grid-cols-2 gap-2 sm:gap-3">
-          <Side title="Top gainers" tone="pos" rows={more ? winners : winners.slice(0, ROWS)} empty="Nobody in profit yet." token={r.token.address} />
-          <Side title="Biggest losers" tone="neg" rows={more ? losers : losers.slice(0, ROWS)} empty="Nobody down yet." token={r.token.address} />
+          <Side title="Top gainers" tone="pos" rows={winners} empty="Nobody in profit yet." token={r.token.address} />
+          <Side title="Biggest losers" tone="neg" rows={losers} empty="Nobody down yet." token={r.token.address} />
         </div>
       )}
       {total > ROWS && (
