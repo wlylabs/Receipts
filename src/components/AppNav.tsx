@@ -118,7 +118,8 @@ export function AppNav() {
       </nav>
 
       <Sheet open={searching} onClose={close} title="Search">
-        <Omnibox autoFocus size="sm" onGo={close} />
+        {/* no autofocus: on a phone it would throw the keyboard up over the sheet */}
+        <Omnibox size="sm" onGo={close} />
         <p className="eyebrow mb-1.5 mt-5">Recently opened</p>
         <div className="-mx-3">
           <RecentList limit={5} compact onPick={close} />

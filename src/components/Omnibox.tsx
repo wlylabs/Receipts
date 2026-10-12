@@ -40,7 +40,7 @@ const ICON: Record<PasteKind, React.ReactNode> = { token: <LineChart className="
  * opens the replay of its trades. People say which; a wallet is still asked of DexScreener, so a
  * token pasted there is caught instead of opening as an empty wallet.
  */
-export function Omnibox({ autoFocus = false, size = 'lg', initial = '', onGo }: { autoFocus?: boolean; size?: 'lg' | 'sm'; initial?: string; onGo?: () => void }) {
+export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm'; initial?: string; onGo?: () => void }) {
   const router = useRouter();
   const [kind, setKind] = useStored<PasteKind>(KEYS.pasteKind, 'token');
   const [value, setValue] = useState(initial);
@@ -178,7 +178,6 @@ export function Omnibox({ autoFocus = false, size = 'lg', initial = '', onGo }: 
             void go(text);
           }}
           placeholder={copy.placeholder}
-          autoFocus={autoFocus}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
