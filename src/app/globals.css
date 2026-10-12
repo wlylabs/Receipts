@@ -1,0 +1,354 @@
+@import 'tailwindcss';
+@import '@fontsource-variable/inter/index.css';
+@import '@fontsource/jetbrains-mono/latin-400.css';
+@import '@fontsource/jetbrains-mono/latin-500.css';
+@import '@fontsource/jetbrains-mono/latin-700.css';
+
+/*
+ * Paper-trade light: white page, hairline borders, one ink colour for actions, and green and
+ * red only where money moves. The receipt is the one object with texture.
+ */
+:root {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --subtle: #f7f7f8;
+  --hover: #f1f1f3;
+  --line: #ebebee;
+  --line-strong: #d9d9de;
+  --ink: #111113;
+  --ink-2: #3f3f46;
+  --muted: #71717a;
+  --faint: #a1a1aa;
+  --pos: #16a34a;
+  --pos-wash: #ecfdf3;
+  --neg: #dc2626;
+  --neg-wash: #fef2f2;
+  --on-ink: #ffffff;
+  --paper: #ffffff;
+  --paper-ink: #18181b;
+  --paper-muted: #71717a;
+  --paper-line: #d4d4d8;
+  --ring: #2563eb;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b0b0c;
+    --surface: #111113;
+    --subtle: #161618;
+    --hover: #1c1c1f;
+    --line: #232326;
+    --line-strong: #2e2e33;
+    --ink: #f4f4f5;
+    --ink-2: #d4d4d8;
+    --muted: #a1a1aa;
+    --faint: #71717a;
+    --pos: #22c55e;
+    --pos-wash: #0c1f14;
+    --neg: #f04444;
+    --neg-wash: #241011;
+    --on-ink: #0b0b0c;
+    --ring: #60a5fa;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-hover: var(--hover);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-pos: var(--pos);
+  --color-pos-wash: var(--pos-wash);
+  --color-neg: var(--neg);
+  --color-neg-wash: var(--neg-wash);
+  --color-on-ink: var(--on-ink);
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-padding-top: 4.5rem;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum', 'cv11';
+}
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  min-height: 2.5rem;
+  padding: 0 0.95rem;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    opacity 120ms ease,
+    transform 80ms ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.985);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--ink);
+  color: var(--on-ink);
+}
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+.btn-quiet {
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.btn-quiet:hover:not(:disabled) {
+  background: var(--hover);
+}
+.btn-buy {
+  background: var(--pos);
+  color: #fff;
+}
+.btn-sell {
+  background: var(--neg);
+  color: #fff;
+}
+
+.eyebrow {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid var(--line);
+  background: var(--subtle);
+  border-radius: 10px;
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease;
+}
+.field:focus-within {
+  border-color: var(--ink);
+  background: var(--surface);
+}
+
+/* ---------- the receipt ---------- */
+
+.paper {
+  position: relative;
+  background: var(--paper);
+  color: var(--paper-ink);
+  font-family: var(--font-mono);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 12px 32px -12px rgba(0, 0, 0, 0.18);
+  --tooth: 6px;
+  margin: var(--tooth) 0;
+}
+.paper::before,
+.paper::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--tooth);
+  background: linear-gradient(-45deg, var(--paper) calc(var(--tooth) / 1.42), transparent 0) 0 0 / calc(var(--tooth) * 2) var(--tooth) repeat-x,
+    linear-gradient(45deg, var(--paper) calc(var(--tooth) / 1.42), transparent 0) 0 0 / calc(var(--tooth) * 2) var(--tooth) repeat-x;
+}
+.paper::before {
+  top: calc(var(--tooth) * -1);
+  transform: rotate(180deg);
+}
+.paper::after {
+  bottom: calc(var(--tooth) * -1);
+}
+
+.dash {
+  border-top: 1px dashed var(--paper-line);
+}
+
+.stamp {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  padding: 0.1em 0.5em;
+  transform: rotate(-8deg);
+}
+
+@keyframes print-line {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.print-in {
+  animation: print-line 180ms ease-out both;
+}
+
+@keyframes stamp-in {
+  0% {
+    opacity: 0;
+    transform: rotate(-8deg) scale(1.8);
+  }
+  100% {
+    opacity: 0.9;
+    transform: rotate(-8deg) scale(1);
+  }
+}
+.stamp-in {
+  animation: stamp-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.skeleton {
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--subtle) 25%, var(--hover) 50%, var(--subtle) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.3s linear infinite;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 200ms ease-out both;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.sheet-in {
+  animation: sheet-up 220ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+.fade-in {
+  animation: fade 180ms ease-out both;
+}
+
+/* slider for the entry and exit */
+input[type='range'].scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 2rem;
+  background: transparent;
+  touch-action: pan-y;
+}
+input[type='range'].scrub::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 99px;
+  background: var(--line);
+}
+input[type='range'].scrub::-moz-range-track {
+  height: 4px;
+  border-radius: 99px;
+  background: var(--line);
+}
+input[type='range'].scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  margin-top: -9px;
+  border-radius: 99px;
+  background: var(--surface);
+  border: 2px solid var(--thumb, var(--ink));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+input[type='range'].scrub::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 99px;
+  background: var(--surface);
+  border: 2px solid var(--thumb, var(--ink));
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
