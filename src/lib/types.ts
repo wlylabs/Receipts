@@ -121,6 +121,8 @@ export interface TokenReceipts {
   token: TokenInfo;
   /** Price since the pair opened as [unix seconds, USD per token], oldest first. */
   series: [number, number][];
+  /** The same history as OHLC candles, oldest first. */
+  candles: Candle[];
   /** Candle size of the series, e.g. "5m", "1h", "1d". */
   candle: string;
   ath: { ts: number; priceUsd: number };

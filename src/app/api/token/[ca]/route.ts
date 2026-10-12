@@ -8,9 +8,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ ca: string }> 
   try {
     const r = await loadToken(ca);
     if (!r.ok) return fail(r.code, r.error);
-    const { token, series, candle, ath, trades } = r.value;
+    const { token, series, candles, candle, ath, trades } = r.value;
     if (series.length < 2) return fail('no-trades', 'This token has no chart yet. Try again once it has traded for a while.');
-    const body: TokenReceipts = { kind: 'token', token, series, candle, ath, window: windowOf(trades), board: leaderboard(trades, token.priceUsd) };
+    const body: TokenReceipts = { kind: 'token', token, series, candles, candle, ath, window: windowOf(trades), board: leaderboard(trades, token.priceUsd) };
     return ok(body);
   } catch (e) {
     console.error('token receipts', ca, e);

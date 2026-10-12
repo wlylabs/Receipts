@@ -178,6 +178,11 @@ export function groupByTrader(trades: readonly Trade[]): Map<string, Trade[]> {
   return by;
 }
 
+/** The token's supply, to turn a price into a market cap; 0 when DexScreener has no market cap. */
+export function supplyOf(token: Pick<TokenInfo, 'mcapUsd' | 'priceUsd'>): number {
+  return token.mcapUsd && token.priceUsd > 0 ? token.mcapUsd / token.priceUsd : 0;
+}
+
 /** Every wallet in the window ranked by profit, best first. */
 export function leaderboard(trades: readonly Trade[], priceUsd: number): BoardRow[] {
   const rows: BoardRow[] = [];

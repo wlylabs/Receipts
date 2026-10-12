@@ -33,7 +33,6 @@ export function ReplayChart({
   markers = [],
   tone,
   bubble,
-  entry,
   scale = 1,
   label,
   className,
@@ -50,8 +49,6 @@ export function ReplayChart({
   tone?: 'pos' | 'neg' | null;
   /** Text in the bubble riding the playhead, e.g. the running P&L. */
   bubble?: string;
-  /** A price to tag on the axis, e.g. the average buy. */
-  entry?: number;
   /** What the axis shows instead of price, e.g. market cap: price times `scale`. */
   scale?: number;
   /** Formats an axis value (already scaled). */
@@ -62,13 +59,13 @@ export function ReplayChart({
     if (candles.length < 2) return null;
     const t0 = candles[0]![0];
     const t1 = Math.max(candles.at(-1)![0] + step, to ?? 0);
-    const { lo, hi } = range(candles, [...markers.filter((m) => m.ts >= t0).map((m) => m.price), entry ?? 0]);
+    const { lo, hi } = range(candles, markers.filter((m) => m.ts >= t0).map((m) => m.price));
     const llo = Math.log(lo);
     const lhi = Math.log(hi);
     const x = (ts: number) => ((ts - t0) / Math.max(1, t1 - t0)) * VW;
     const y = (p: number) => VH - PAD_BOTTOM - ((Math.log(Math.max(p, lo)) - llo) / Math.max(1e-9, lhi - llo)) * (VH - PAD_TOP - PAD_BOTTOM);
     return { x, y, t0, t1, ticks: logTicks(lo * scale, hi * scale, 4).map((v) => v / scale) };
-  }, [candles, step, markers, to, entry, scale]);
+  }, [candles, step, markers, to, scale]);
 
   if (!geo) return <div className={cx('grid aspect-[5/2] place-items-center rounded-xl bg-subtle text-sm text-muted', className)}>Not enough trades for a chart yet.</div>;
 
@@ -84,8 +81,7 @@ export function ReplayChart({
   const hx = geo.x(playhead);
   const hy = geo.y(now);
   // axis labels make way for the price tags
-  const tags = [hy, ...(entry !== undefined && entry > 0 ? [geo.y(entry)] : [])];
-  const labels = geo.ticks.filter((p) => tags.every((t) => Math.abs(geo.y(p) - t) > VH * 0.07));
+  const labels = geo.ticks.filter((p) => Math.abs(geo.y(p) - hy) > VH * 0.07);
 
   return (
     <div className={cx('relative flex aspect-[5/2] w-full select-none', className)}>
@@ -94,8 +90,6 @@ export function ReplayChart({
           {geo.ticks.map((p) => (
             <line key={p} x1="0" x2={VW} y1={geo.y(p)} y2={geo.y(p)} stroke="var(--line)" vectorEffect="non-scaling-stroke" />
           ))}
-          {/* the run's stretch, shaded */}
-          {playhead > runFrom && <rect x={geo.x(runFrom)} y="0" width={Math.max(0, hx - geo.x(runFrom))} height={VH} fill={color} fillOpacity="0.05" />}
           {shown.map(([ts, o, h, l, c]) => {
             const up = c >= o;
             const cx0 = geo.x(ts + step / 2);
@@ -155,11 +149,6 @@ export function ReplayChart({
             {label(p * scale)}
           </span>
         ))}
-        {entry !== undefined && entry > 0 && (
-          <span className="absolute left-0.5 -translate-y-1/2 rounded bg-ink-2 px-1 py-0.5 font-medium text-[var(--surface)]" style={{ top: pct(geo.y(entry), VH) }}>
-            {label(entry * scale)}
-          </span>
-        )}
         <span className="absolute left-0.5 -translate-y-1/2 rounded px-1 py-0.5 font-semibold text-white" style={{ top: pct(hy, VH), background: color }}>
           {label(now * scale)}
         </span>

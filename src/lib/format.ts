@@ -65,6 +65,11 @@ export function dateTime(ts: number): string {
   return new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(ts * 1000);
 }
 
+/** A calendar date with the year: "Oct 03, 2026". */
+export function date(ts: number): string {
+  return new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: 'short', year: 'numeric' }).format(ts * 1000);
+}
+
 export function day(ts: number): string {
   return new Intl.DateTimeFormat(LOCALE, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(ts * 1000);
 }

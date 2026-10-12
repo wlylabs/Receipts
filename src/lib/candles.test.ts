@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucket, candleAt, logTicks, range, stepOf, toCandles, upTo, type Candle } from './candles';
+import { bucket, candleAt, mergeMarkers, logTicks, range, stepOf, toCandles, upTo, type Candle } from './candles';
 
 const five = (n: number): Candle[] => Array.from({ length: n }, (_, i): Candle => [i * 300, 1 + i, 2 + i, 0.5 + i, 1.5 + i]);
 
@@ -46,5 +46,32 @@ describe('candles', () => {
       expect(t).toBeGreaterThanOrEqual(lo * 0.9);
       expect(t).toBeLessThanOrEqual(hi * 1.1);
     }
+  });
+
+  it('merges trades in one candle, or close by, into one marker', () => {
+    const k = five(3);
+    const merged = mergeMarkers(
+      [
+        { ts: 10, price: 1.2, kind: 'buy' },
+        { ts: 100, price: 1.1, kind: 'buy' },
+        { ts: 350, price: 2, kind: 'buy' },
+        { ts: 400, price: 2.5, kind: 'sell' },
+        { ts: 700, price: 3, kind: 'sell' },
+      ],
+      k,
+      300,
+      0,
+    );
+    expect(merged).toEqual([
+      { ts: 10, price: 1.1, kind: 'buy' },
+      { ts: 350, price: 2.5, kind: 'sell', label: 'B/S' },
+      { ts: 700, price: 3, kind: 'sell' },
+    ]);
+  });
+
+  it('merges trades a few candles apart too', () => {
+    const k = five(10);
+    const m = (ts: number) => ({ ts, price: 1, kind: 'buy' as const });
+    expect(mergeMarkers([m(0), m(600), m(900), m(2400)], k, 300)).toHaveLength(2);
   });
 });

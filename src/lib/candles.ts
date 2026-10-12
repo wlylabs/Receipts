@@ -1,3 +1,5 @@
+import type { Marker } from '../components/ReplayChart';
+
 /** A price candle as [unix seconds at open, open, high, low, close], USD per token. */
 export type Candle = [number, number, number, number, number];
 
@@ -136,4 +138,36 @@ export function drawCandles(g: CanvasRenderingContext2D, candles: readonly Candl
     g.fillRect(cx - bw / 2, top, bw, Math.max(2, bottom - top));
   }
   g.globalAlpha = prev;
+}
+
+/**
+ * Trades close together as one marker, so they do not pile up: trades whose candles are at most
+ * `gap` candles from the first in their group (on a phone a candle is a few pixels wide, narrower
+ * than a marker). A group of one kind is one B or S; one with both is "B/S", coloured by its last
+ * trade. It sits at the first trade's time (so it pops when the replay reaches it) and at the
+ * lowest buy or the highest sell.
+ */
+export function mergeMarkers(markers: readonly Marker[], candles: readonly Candle[], step: number, gap = 3): Marker[] {
+  const groups: { at: number; list: Marker[] }[] = [];
+  const index = (ts: number) => {
+    const k = candleAt(candles, step, ts);
+    return k ? candles.indexOf(k) : Math.round(ts / Math.max(1, step));
+  };
+  for (const m of [...markers].sort((a, b) => a.ts - b.ts)) {
+    const i = index(m.ts);
+    const g = groups.at(-1);
+    if (g && i - g.at <= gap) g.list.push(m);
+    else groups.push({ at: i, list: [m] });
+  }
+  return groups.map(({ list }) => {
+    const last = list.at(-1)!;
+    const mixed = list.some((m) => m.kind !== list[0]!.kind);
+    const same = list.filter((m) => m.kind === last.kind).map((m) => m.price);
+    return {
+      ts: list[0]!.ts,
+      price: last.kind === 'buy' ? Math.min(...same) : Math.max(...same),
+      kind: last.kind,
+      ...(mixed ? { label: 'B/S' } : {}),
+    };
+  });
 }
