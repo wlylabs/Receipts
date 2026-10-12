@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Download, Link2, Loader2, Play, RotateCcw, Trophy } from 'lucide-react';
+import { ArrowUpRight, Download, Link2, Loader2 } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { KEYS, RANKS, stampOf, toneOf, type Recent } from '../lib/game';
 import { placement, rankOf, simulate, type SimResult } from '../lib/receipts';
 import { pushRecent } from '../lib/recent';
+import { MAX_PAPER, PAPER_KEY, paperPnl, type PaperTrade } from '../lib/paper';
 import type { ReceiptDoc } from '../lib/receiptDoc';
 import type { TokenReceipts } from '../lib/types';
 import { compact, dateTime, day, parseAmount, pct, price, short, span, usd } from '../lib/format';
@@ -16,19 +17,13 @@ import { saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import { Receipt } from './Receipt';
-import { Failure, Printing } from './States';
+import { Failure, Loading } from './States';
 import { PriceChart, type Marker } from './PriceChart';
 import { TokenImage } from './TokenImage';
+import { Sheet } from './Sheet';
 
-const BAGS = ['10', '50', '100', '500', '1000'];
-const PLAY_MS = 2_600;
-
-interface Best {
-  pnl: number;
-  roi: number;
-  place: number;
-  of: number;
-}
+const BAGS = [50, 100, 500, 1000];
+const PLAY_MS = 2_200;
 
 export function TokenView({ ca }: { ca: string }) {
   const { state, reload } = useApi<TokenReceipts>(`/api/token/${ca}/`);
@@ -36,14 +31,14 @@ export function TokenView({ ca }: { ca: string }) {
   const data = state.status === 'ready' ? state.data : null;
   useEffect(() => {
     if (data) setRecent((r) => pushRecent(r, { kind: 'token', address: data.token.address, label: `$${data.token.symbol}` }));
-  }, [data, ca, setRecent]);
+  }, [data, setRecent]);
 
-  if (state.status === 'loading') return <Printing what={`Reading ${short(ca)}’s chart and latest trades`} />;
+  if (state.status === 'loading') return <Loading what={`Loading ${short(ca)}’s chart and latest trades…`} />;
   if (state.status === 'error') return <Failure error={state.error} onRetry={reload} />;
-  return <ApeGame key={ca} r={state.data} />;
+  return <PaperTradeDesk key={ca} r={state.data} />;
 }
 
-function ApeGame({ r }: { r: TokenReceipts }) {
+function PaperTradeDesk({ r }: { r: TokenReceipts }) {
   const { token, series, board } = r;
   const last = series.length - 1;
   const athIdx = Math.max(0, series.findIndex(([ts]) => ts === r.ath.ts));
@@ -57,67 +52,78 @@ function ApeGame({ r }: { r: TokenReceipts }) {
   const [bag, setBag] = useState('100');
   const [entry, setEntry] = useState(0);
   const [exit, setExit] = useState(last);
-  const [phase, setPhase] = useState<'setup' | 'playing' | 'done'>('setup');
-  const [reveal, setReveal] = useState(0);
-  const [shown, setShown] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [reveal, setReveal] = useState(last);
+  const [result, setResult] = useState<{ sim: SimResult; doc: ReceiptDoc; place: number; amount: number } | null>(null);
+  const [sheet, setSheet] = useState(false);
+  const [shown, setShown] = useState(Infinity);
   const [saving, setSaving] = useState(false);
-  const [best, setBest] = useStored<Best | null>(KEYS.best(token.address), null);
-  const [newBest, setNewBest] = useState(false);
+  const [paper, setPaper] = useStored<PaperTrade[]>(PAPER_KEY, []);
   const ids = { bag: useId(), entry: useId(), exit: useId() };
-  const resultRef = useRef<HTMLDivElement>(null);
 
   const amount = parseAmount(bag);
   const bagOk = Number.isFinite(amount) && amount >= 1 && amount <= 1_000_000;
   const holdNow = exit === last;
-  const sim: SimResult = useMemo(
-    () => simulate({ series, entry, exit, usd: bagOk ? amount : 0, holdNow, nowPrice: token.priceUsd }),
-    [series, entry, exit, amount, bagOk, token, holdNow],
-  );
+  const sim = useMemo(() => simulate({ series, entry, exit, usd: bagOk ? amount : 0, holdNow, nowPrice: token.priceUsd }), [series, entry, exit, amount, bagOk, token, holdNow]);
   const place = placement(sim.pnl, board);
-  const doc = useMemo(() => (sim.ok ? simDoc(r, sim, entry, exit, holdNow, place, amount) : null), [r, sim, entry, exit, holdNow, place, amount]);
-  const lines = doc?.lines.length ?? 0;
 
-  // the replay walks the held stretch, then the receipt prints
+  // the replay walks the held stretch on the chart, then the receipt prints in the sheet
   useEffect(() => {
-    if (phase !== 'playing') return;
+    if (!playing) return;
     if (reveal < exit) {
       const steps = Math.max(1, exit - entry);
-      const jump = Math.max(1, Math.ceil(steps / 60));
+      const jump = Math.max(1, Math.ceil(steps / 50));
       const id = setTimeout(() => setReveal((v) => Math.min(exit, v + jump)), PLAY_MS / Math.ceil(steps / jump));
       return () => clearTimeout(id);
     }
-    if (shown < lines) {
-      const id = setTimeout(() => setShown((s) => s + 1), 80);
-      return () => clearTimeout(id);
-    }
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- the run ends when the last line prints
-    setPhase('done');
-  }, [phase, reveal, exit, entry, shown, lines]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- the replay ends at the exit
+    setPlaying(false);
+    setShown(0);
+    setSheet(true);
+  }, [playing, reveal, exit, entry]);
 
   useEffect(() => {
-    if (phase !== 'done' || !sim.ok) return;
-    const better = !best || sim.pnl > best.pnl;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- shown once with the result
-    setNewBest(better);
-    if (better) setBest({ pnl: sim.pnl, roi: sim.roi, place, of: board.length + 1 });
-    // only when a run finishes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase]);
+    if (!sheet || !result || shown >= result.doc.lines.length) return;
+    const id = setTimeout(() => setShown((s) => s + 1), 55);
+    return () => clearTimeout(id);
+  }, [sheet, result, shown]);
 
-  const play = () => {
-    if (!sim.ok) return;
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    setReveal(reduced ? exit : entry);
-    setShown(reduced ? lines : 0);
-    setNewBest(false);
-    setPhase('playing');
-    requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  const placeTrade = () => {
+    if (!sim.ok || playing) return;
+    const doc = simDoc(r, sim, entry, exit, holdNow, place, amount);
+    setResult({ sim, doc, place, amount });
+    const trade: PaperTrade = {
+      id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      chain: token.chain,
+      address: token.address,
+      symbol: token.symbol,
+      image: token.image,
+      usd: amount,
+      entryTs: series[entry]![0],
+      entryPrice: sim.entryPrice,
+      exitTs: holdNow ? null : series[exit]![0],
+      exitPrice: holdNow ? null : sim.exitPrice,
+      placedAt: Date.now(),
+    };
+    setPaper((list) => [trade, ...list].slice(0, MAX_PAPER));
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setReveal(exit);
+      setShown(Infinity);
+      setSheet(true);
+      return;
+    }
+    setReveal(entry);
+    setPlaying(true);
   };
 
-  const edit = <T,>(fn: (v: T) => void) => (v: T) => {
-    fn(v);
-    if (phase !== 'setup') setPhase('setup');
-  };
+  const closeSheet = useCallback(() => setSheet(false), []);
+
+  const edit =
+    <T,>(fn: (v: T) => void) =>
+    (v: T) => {
+      fn(v);
+      setReveal(last);
+    };
   const setEntryAt = edit((i: number) => {
     setEntry(i);
     if (exit < i) setExit(i);
@@ -127,42 +133,44 @@ function ApeGame({ r }: { r: TokenReceipts }) {
     if (entry > i) setEntry(i);
   });
 
-  const presets: { label: string; on: () => void; active: boolean }[] = [
-    { label: 'First buyer', on: () => setEntryAt(0), active: entry === 0 },
-    { label: 'Bought the top', on: () => setEntryAt(athIdx), active: entry === athIdx && athIdx > 0 },
-    ...(dipIdx > athIdx ? [{ label: 'Bought the dip', on: () => setEntryAt(dipIdx), active: entry === dipIdx }] : []),
+  const entries = [
+    { label: 'Launch', on: () => setEntryAt(0), active: entry === 0 },
+    ...(athIdx > 0 ? [{ label: 'Top', on: () => setEntryAt(athIdx), active: entry === athIdx }] : []),
+    ...(dipIdx > athIdx ? [{ label: 'Dip', on: () => setEntryAt(dipIdx), active: entry === dipIdx }] : []),
   ];
-  const exits: { label: string; on: () => void; active: boolean }[] = [
-    { label: 'Still holding', on: () => setExitAt(last), active: exit === last },
-    ...(athIdx >= entry && athIdx < last ? [{ label: 'Sold the top', on: () => setExitAt(athIdx), active: exit === athIdx }] : []),
+  const exits = [
+    { label: 'Hold to now', on: () => setExitAt(last), active: exit === last },
+    ...(athIdx >= entry && athIdx < last ? [{ label: 'Sell the top', on: () => setExitAt(athIdx), active: exit === athIdx }] : []),
   ];
 
-  const playing = phase === 'playing';
-  const showRun = phase !== 'setup';
   const markers: Marker[] = sim.ok
     ? [
         { ts: series[entry]![0], price: series[entry]![1], kind: 'entry' },
-        ...(showRun && reveal < exit ? [] : [{ ts: series[exit]![0], price: holdNow ? token.priceUsd : series[exit]![1], kind: 'exit' as const }]),
+        ...(playing ? [] : [{ ts: series[exit]![0], price: holdNow ? token.priceUsd : series[exit]![1], kind: 'exit' as const }]),
       ]
     : [];
-  const live = showRun ? sim.path[Math.max(0, Math.min(sim.path.length - 1, reveal - entry))] : null;
-  const runTone = toneOf(showRun ? (live?.pnl ?? 0) : sim.pnl);
+  const live = playing ? (sim.path[Math.max(0, Math.min(sim.path.length - 1, reveal - entry))]?.pnl ?? 0) : sim.pnl;
+  const liveTone = toneOf(live);
+  const mine = paper.filter((p) => p.chain === token.chain && p.address === token.address);
+
+  const closeAtMarket = (id: string) => setPaper((list) => list.map((p) => (p.id === id ? { ...p, exitTs: Math.floor(Date.now() / 1000), exitPrice: token.priceUsd } : p)));
 
   const share = async () => {
+    if (!result) return;
     const res = await shareLink(
       `${SITE_URL}${ROUTES.token(token.address)}`,
       'Receipts',
-      `Aped ${usd(amount)} into $${token.symbol}: ${usd(sim.pnl, { signed: true })} (${pct(sim.roi, { signed: true })}). #${place} of ${board.length + 1} recent traders. Beat it:`,
+      `Paper-traded ${usd(result.amount)} of $${token.symbol}: ${usd(result.sim.pnl, { signed: true })} (${pct(result.sim.roi, { signed: true })}), #${result.place} of ${board.length + 1} traders. Beat it:`,
     );
     if (res === 'copied') toast('Link copied.');
     else if (res === 'failed') toast('Couldn’t share. Copy the address bar instead.');
   };
   const save = async () => {
-    if (!doc) return;
+    if (!result) return;
     setSaving(true);
     try {
       const { receiptPng } = await import('../lib/receiptImage');
-      const blob = await receiptPng(doc, SITE_HOST);
+      const blob = await receiptPng(result.doc, SITE_HOST);
       const res = await saveFile(new File([blob], `receipt-${token.symbol.toLowerCase().replace(/[^a-z0-9]/g, '') || 'token'}.png`, { type: 'image/png' }));
       if (res === 'saved') toast('Receipt saved.');
     } catch {
@@ -173,162 +181,204 @@ function ApeGame({ r }: { r: TokenReceipts }) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 sm:pt-10">
-      {/* the token */}
-      <header className="flex items-center gap-3 sm:gap-4">
-        <TokenImage src={token.image} symbol={token.symbol} className="size-12 text-xl sm:size-14" />
+    <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
+      {/* the ticker */}
+      <header className="flex items-center gap-3">
+        <TokenImage src={token.image} symbol={token.symbol} className="size-10 text-base" />
         <div className="min-w-0 flex-1">
-          <p className="label text-muted">Ape simulator</p>
-          <h1 className="truncate text-2xl font-bold leading-tight sm:text-3xl">
-            ${token.symbol} <span className="text-base font-medium text-muted sm:text-lg">{token.name}</span>
+          <h1 className="flex items-baseline gap-2 truncate">
+            <span className="text-[18px] font-semibold tracking-tight">{token.symbol}</span>
+            <span className="truncate text-[13px] text-muted">{token.name}</span>
           </h1>
+          <p className="truncate text-[12.5px] text-muted">
+            {token.chainName} · {token.dex} · {token.quoteSymbol} pair
+          </p>
         </div>
-        <a href={token.url} target="_blank" rel="noreferrer" className="btn btn-ghost h-9 min-h-0 shrink-0 px-3 text-sm">
-          <span className="hidden sm:inline">DexScreener</span> <ArrowUpRight className="size-4" aria-hidden />
-        </a>
+        <div className="text-right">
+          <p className="num text-[18px] font-semibold tracking-tight">{price(token.priceUsd)}</p>
+          {token.change24h !== null && <p className={cx('num text-[12.5px] font-medium', token.change24h >= 0 ? 'text-pos' : 'text-neg')}>{pct(token.change24h / 100, { signed: true })} 24h</p>}
+        </div>
       </header>
-      <dl className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:grid sm:grid-cols-6 sm:px-0">
-        <Stat k="Price" v={price(token.priceUsd)} />
-        <Stat k="24h" v={token.change24h === null ? '-' : pct(token.change24h / 100, { signed: true })} tone={token.change24h === null ? null : toneOf(token.change24h)} />
+      <dl className="no-scrollbar mt-4 flex gap-5 overflow-x-auto border-y border-line py-2.5 text-[12.5px]">
         <Stat k="Mcap" v={usd(token.mcapUsd)} />
         <Stat k="Liquidity" v={usd(token.liquidityUsd)} />
         <Stat k="Vol 24h" v={usd(token.volume24hUsd)} />
         <Stat k="Age" v={token.createdAt ? span(now - token.createdAt) : '-'} />
+        <Stat k="ATH" v={price(r.ath.priceUsd)} />
+        <a href={token.url} target="_blank" rel="noreferrer" className="ml-auto flex shrink-0 items-center gap-1 text-muted hover:text-ink">
+          DexScreener <ArrowUpRight className="size-3.5" aria-hidden />
+        </a>
       </dl>
 
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-10">
-        <section className="card p-4 sm:p-6" aria-label="Your trade">
-          <div className="flex items-baseline justify-between gap-3">
-            <p className="label text-muted">{r.candle} candles · log scale</p>
-            <p className={cx('num text-sm font-bold', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')} aria-live="polite">
-              {sim.ok ? usd(showRun ? (live?.pnl ?? 0) : sim.pnl, { signed: true }) : '—'}
-            </p>
-          </div>
-          <PriceChart
-            series={series}
-            markers={markers}
-            range={sim.ok ? [entry, exit] : undefined}
-            reveal={showRun ? reveal : exit}
-            tone={runTone}
-            athTs={r.ath.ts}
-            className="mt-3"
-          />
-
-          <div className="mt-5 space-y-5">
-            <div>
-              <label htmlFor={ids.bag} className="flex items-baseline justify-between text-[15px] font-semibold">
-                Your bag
-                {sim.ok && <span className="num text-[13px] font-normal text-muted">≈ {compact(sim.tokens)} ${token.symbol}</span>}
-              </label>
-              <div className={cx('mt-2 flex items-center rounded-[14px] border bg-surface-2 px-3.5 focus-within:border-ink', bagOk || !bag ? 'border-line' : 'border-neg')}>
-                <input
-                  id={ids.bag}
-                  value={bag}
-                  onChange={(e) => edit(setBag)(e.target.value)}
-                  inputMode="decimal"
-                  autoComplete="off"
-                  className="num h-12 min-w-0 flex-1 bg-transparent text-lg font-semibold outline-none"
-                  aria-invalid={!bagOk}
-                />
-                <span className="num text-sm font-semibold text-muted">USD</span>
-              </div>
-              <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto">
-                {BAGS.map((b) => (
-                  <Chip key={b} on={bagOk && amount === Number(b)} onClick={() => edit(setBag)(b)}>
-                    ${compact(Number(b))}
-                  </Chip>
-                ))}
-              </div>
-              {!bagOk && bag !== '' && <p className="mt-1.5 text-[13px] text-neg">Between $1 and $1,000,000.</p>}
-            </div>
-
-            <Scrub
-              id={ids.entry}
-              label="Buy at"
-              value={entry}
-              max={last}
-              onChange={setEntryAt}
-              thumb="var(--hi)"
-              detail={`${day(series[entry]![0])} · ${price(series[entry]![1])}`}
-              chips={presets}
-            />
-            <Scrub
-              id={ids.exit}
-              label="Sell at"
-              value={exit}
-              max={last}
-              onChange={setExitAt}
-              thumb="var(--ink)"
-              detail={holdNow ? `Now · ${price(token.priceUsd)}` : `${day(series[exit]![0])} · ${price(series[exit]![1])}`}
-              chips={exits}
-            />
-
-            <button type="button" onClick={play} disabled={!sim.ok || playing} className="btn btn-hi h-14 w-full text-lg">
-              {playing ? <Loader2 className="size-5 animate-spin" aria-hidden /> : phase === 'done' ? <RotateCcw className="size-5" aria-hidden /> : <Play className="size-5" aria-hidden />}
-              {phase === 'done' ? 'Run it again' : 'Print my receipt'}
-            </button>
-            <p className="text-[13px] leading-snug text-muted">
-              Buys and sells at the candle’s closing price on {token.dex} ({token.chainName}). DEX fees, token taxes and slippage are not included, and a big bag would move a small pool
-              more than this shows.
-            </p>
-          </div>
-        </section>
-
-        <div ref={resultRef} className="scroll-mt-20 space-y-4">
-          {best && (
-            <div className="card flex items-center gap-3 px-4 py-3">
-              <Trophy className="size-5 shrink-0 text-[#c98a00]" aria-hidden />
-              <p className="min-w-0 flex-1 text-sm">
-                Your best on ${token.symbol}: <b className={cx('num', best.pnl > 0 ? 'text-pos' : 'text-neg')}>{usd(best.pnl, { signed: true })}</b>{' '}
-                <span className="text-muted">
-                  · #{best.place} of {best.of}
-                </span>
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        {/* the chart */}
+        <section className="panel p-3 sm:p-4" aria-label="Chart">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <p className="eyebrow">{r.candle} candles · log</p>
+            {sim.ok && (
+              <p className={cx('num rounded-md px-2 py-0.5 text-[13px] font-semibold', liveTone === 'pos' && 'bg-pos-wash text-pos', liveTone === 'neg' && 'bg-neg-wash text-neg', !liveTone && 'bg-subtle')} aria-live="polite">
+                {usd(live, { signed: true })}
               </p>
-              {newBest && phase === 'done' && <span className="label pop rounded-full bg-hi px-2 py-1 text-hi-ink">New best</span>}
-            </div>
-          )}
-          <div className="pt-3 pb-3">
-            {showRun && doc ? (
-              <Receipt doc={doc} shown={reveal >= exit ? shown : 0} />
-            ) : (
-              <div className="paper mx-auto grid w-full max-w-[400px] place-items-center px-6 py-14 text-center">
-                <div>
-                  <p className="text-xl font-extrabold tracking-[0.18em]">RECEIPTS</p>
-                  <p className="mt-2 text-[13px] text-[#6e6a60]">Set your bag, entry and exit, then print.</p>
-                  <p className={cx('num mt-6 text-4xl font-extrabold', sim.ok ? 'text-[#d9d3c4]' : 'text-[#e3ddcf]')}>{sim.ok ? '±' : '—'}</p>
-                </div>
-              </div>
             )}
           </div>
-          {phase === 'done' && (
-            <div className="pop grid grid-cols-2 gap-2">
-              <p className="col-span-2 text-center text-[15px]">
-                You’d place <b className="num">#{place}</b> of <b className="num">{board.length + 1}</b> recent traders on ${token.symbol}.
-              </p>
-              <button type="button" onClick={save} disabled={saving} className="btn btn-ghost">
+          <PriceChart series={series} markers={markers} range={sim.ok ? [entry, exit] : undefined} reveal={reveal} tone={liveTone} athTs={r.ath.ts} className="mt-3" />
+        </section>
+
+        {/* the order ticket */}
+        <section className="panel p-4" aria-label="Paper trade">
+          <div className="flex items-center justify-between">
+            <p className="text-[14px] font-semibold">Paper buy</p>
+            <span className="rounded-md bg-pos-wash px-2 py-0.5 text-[11.5px] font-semibold text-pos">Pretend money</span>
+          </div>
+
+          <label htmlFor={ids.bag} className="eyebrow mt-4 block">
+            Amount
+          </label>
+          <div className={cx('field mt-1.5 h-11 px-3', !bagOk && bag !== '' && 'border-neg')}>
+            <span className="text-[15px] text-muted">$</span>
+            <input
+              id={ids.bag}
+              value={bag}
+              onChange={(e) => edit(setBag)(e.target.value)}
+              inputMode="decimal"
+              autoComplete="off"
+              className="num h-full min-w-0 flex-1 bg-transparent text-[15px] font-medium outline-none"
+              aria-invalid={!bagOk}
+            />
+            <span className="text-[12.5px] text-muted">USD</span>
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-1.5">
+            {BAGS.map((b) => (
+              <Chip key={b} on={bagOk && amount === b} onClick={() => edit(setBag)(String(b))}>
+                ${compact(b)}
+              </Chip>
+            ))}
+          </div>
+
+          <Scrub id={ids.entry} label="Buy at" value={entry} max={last} onChange={setEntryAt} thumb="var(--pos)" detail={`${day(series[entry]![0])} · ${price(series[entry]![1])}`} chips={entries} />
+          <Scrub
+            id={ids.exit}
+            label="Sell at"
+            value={exit}
+            max={last}
+            onChange={setExitAt}
+            thumb="var(--neg)"
+            detail={holdNow ? `Now · ${price(token.priceUsd)}` : `${day(series[exit]![0])} · ${price(series[exit]![1])}`}
+            chips={exits}
+          />
+
+          <dl className="mt-4 space-y-1.5 border-t border-line pt-3 text-[13px]">
+            <Row k="Tokens" v={sim.ok ? compact(sim.tokens) : '-'} />
+            <Row k="Value at exit" v={sim.ok ? usd(sim.out) : '-'} />
+            <Row k="Est. P&L" v={sim.ok ? `${usd(sim.pnl, { signed: true })} · ${pct(sim.roi, { signed: true })}` : '-'} tone={sim.ok ? toneOf(sim.pnl) : null} strong />
+            <Row k="Rank" v={sim.ok ? `#${place} of ${board.length + 1}` : '-'} />
+          </dl>
+
+          <button type="button" onClick={placeTrade} disabled={!sim.ok || playing} className="btn btn-primary mt-4 h-11 w-full text-[14.5px]">
+            {playing && <Loader2 className="size-4 animate-spin" aria-hidden />}
+            {playing ? 'Replaying…' : 'Place paper trade'}
+          </button>
+          <p className="mt-2.5 text-[11.5px] leading-snug text-faint">At candle close prices. DEX fees, taxes and slippage not included.</p>
+        </section>
+      </div>
+
+      {mine.length > 0 && (
+        <section className="mt-6" aria-labelledby="positions">
+          <h2 id="positions" className="text-[14px] font-semibold">
+            My {token.symbol} paper trades
+          </h2>
+          <div className="panel mt-2 overflow-x-auto">
+            <table className="w-full text-[13px]">
+              <thead className="text-left text-muted">
+                <tr className="border-b border-line">
+                  <Th>Bought</Th>
+                  <Th>Size</Th>
+                  <Th wide>Entry</Th>
+                  <Th>Exit</Th>
+                  <Th right>P&L</Th>
+                  <Th right>
+                    <span className="sr-only">Action</span>
+                  </Th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {mine.map((p) => {
+                  const pnl = paperPnl(p, token.priceUsd) ?? 0;
+                  return (
+                    <tr key={p.id}>
+                      <Td>{day(p.entryTs)}</Td>
+                      <Td>{usd(p.usd)}</Td>
+                      <Td wide>{price(p.entryPrice)}</Td>
+                      <Td>{p.exitPrice ? price(p.exitPrice) : <span className="text-muted">Open · {price(token.priceUsd)}</span>}</Td>
+                      <Td right>
+                        <span className={cx('font-medium', pnl > 0 ? 'text-pos' : pnl < 0 && 'text-neg')}>{usd(pnl, { signed: true })}</span>
+                      </Td>
+                      <Td right>
+                        {p.exitPrice === null ? (
+                          <button type="button" onClick={() => closeAtMarket(p.id)} className="btn btn-quiet h-7 min-h-0 px-2.5 text-[12px]">
+                            Close
+                          </button>
+                        ) : (
+                          <span className="text-faint">Closed</span>
+                        )}
+                      </Td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <Board r={r} />
+
+      <Sheet open={sheet && !!result} onClose={closeSheet} title="Paper trade receipt">
+        {result && (
+          <>
+            <Receipt doc={result.doc} shown={shown} />
+            <p className="mt-5 text-center text-[13.5px] text-ink-2">
+              You’d place <b className="num">#{result.place}</b> of <b className="num">{board.length + 1}</b> recent {token.symbol} traders.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={save} disabled={saving} className="btn btn-quiet">
                 {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
                 Save image
               </button>
-              <button type="button" onClick={share} className="btn btn-ghost">
+              <button type="button" onClick={share} className="btn btn-primary">
                 <Link2 className="size-4" aria-hidden /> Challenge
               </button>
             </div>
-          )}
-        </div>
-      </div>
-
-      <Board r={r} you={phase === 'done' ? sim.pnl : null} />
+          </>
+        )}
+      </Sheet>
     </div>
   );
 }
 
-function Stat({ k, v, tone }: { k: string; v: string; tone?: 'pos' | 'neg' | null }) {
+function Stat({ k, v }: { k: string; v: string }) {
   return (
-    <div className="min-w-28 shrink-0 rounded-xl border border-line bg-surface px-3 py-2 sm:min-w-0">
-      <dt className="label text-muted">{k}</dt>
-      <dd className={cx('num truncate font-bold', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{v}</dd>
+    <div className="flex shrink-0 gap-1.5">
+      <dt className="text-muted">{k}</dt>
+      <dd className="num font-medium">{v}</dd>
     </div>
   );
+}
+
+function Row({ k, v, tone, strong }: { k: string; v: string; tone?: 'pos' | 'neg' | null; strong?: boolean }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-muted">{k}</dt>
+      <dd className={cx('num text-right', strong && 'font-semibold', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{v}</dd>
+    </div>
+  );
+}
+
+function Th({ children, right, wide }: { children: React.ReactNode; right?: boolean; wide?: boolean }) {
+  return <th className={cx('px-3 py-2 text-[12px] font-medium', right && 'text-right', wide && 'hidden sm:table-cell')}>{children}</th>;
+}
+function Td({ children, right, wide }: { children: React.ReactNode; right?: boolean; wide?: boolean }) {
+  return <td className={cx('num whitespace-nowrap px-3 py-2.5', right && 'text-right', wide && 'hidden sm:table-cell')}>{children}</td>;
 }
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
@@ -337,7 +387,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       type="button"
       onClick={onClick}
       aria-pressed={on}
-      className={cx('num h-9 shrink-0 rounded-full border px-3.5 text-sm font-semibold transition-colors', on ? 'border-ink bg-ink text-bg' : 'border-line bg-surface-2 text-ink hover:border-muted')}
+      className={cx('num h-8 shrink-0 rounded-lg border px-2.5 text-[12.5px] font-medium transition-colors', on ? 'border-ink bg-ink text-on-ink' : 'border-line bg-surface text-ink-2 hover:bg-hover')}
     >
       {children}
     </button>
@@ -364,11 +414,13 @@ function Scrub({
   chips: { label: string; on: () => void; active: boolean }[];
 }) {
   return (
-    <div>
-      <label htmlFor={id} className="flex items-baseline justify-between gap-3 text-[15px] font-semibold">
-        {label}
-        <span className="num truncate text-[13px] font-normal text-muted">{detail}</span>
-      </label>
+    <div className="mt-4">
+      <div className="flex items-baseline justify-between gap-3">
+        <label htmlFor={id} className="eyebrow">
+          {label}
+        </label>
+        <span className="num truncate text-[12.5px] text-ink-2">{detail}</span>
+      </div>
       <input
         id={id}
         type="range"
@@ -377,7 +429,7 @@ function Scrub({
         step={1}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="scrub"
+        className="scrub mt-1"
         style={{ ['--thumb' as string]: thumb }}
         aria-valuetext={detail}
       />
@@ -392,22 +444,21 @@ function Scrub({
   );
 }
 
-function Board({ r, you }: { r: TokenReceipts; you: number | null }) {
+function Board({ r }: { r: TokenReceipts }) {
   const [side, setSide] = useState<'top' | 'worst'>('top');
   const rows = side === 'top' ? r.board.slice(0, 10) : [...r.board].reverse().slice(0, 10);
-  const n = r.board.length;
   return (
-    <section className="mt-10" aria-labelledby="board-title">
+    <section className="mt-8" aria-labelledby="board-title">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 id="board-title" className="text-xl font-bold tracking-tight sm:text-2xl">
-            Recent receipts on ${r.token.symbol}
+          <h2 id="board-title" className="text-[14px] font-semibold">
+            Recent traders
           </h2>
-          <p className="mt-1 text-sm text-muted">
-            {n} wallets · latest {r.window.trades} trades ({span(r.window.to - r.window.from)}) · bags valued at today’s price
+          <p className="mt-0.5 text-[12.5px] text-muted">
+            {r.board.length} wallets in the latest {r.window.trades} trades ({span(r.window.to - r.window.from)}). Tap one to call its receipt.
           </p>
         </div>
-        <div role="tablist" aria-label="Board" className="flex rounded-[12px] border border-line bg-surface-2 p-1">
+        <div role="tablist" aria-label="Order" className="flex rounded-lg bg-subtle p-0.5">
           {(['top', 'worst'] as const).map((s) => (
             <button
               key={s}
@@ -415,41 +466,52 @@ function Board({ r, you }: { r: TokenReceipts; you: number | null }) {
               role="tab"
               aria-selected={side === s}
               onClick={() => setSide(s)}
-              className={cx('h-9 rounded-[9px] px-4 text-sm font-semibold', side === s ? 'bg-surface text-ink shadow-sm ring-1 ring-line' : 'text-muted')}
+              className={cx('h-8 rounded-md px-3 text-[12.5px] font-medium', side === s ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
             >
-              {s === 'top' ? 'Biggest wins' : 'Biggest L’s'}
+              {s === 'top' ? 'Top P&L' : 'Worst P&L'}
             </button>
           ))}
         </div>
       </div>
-      <ol className="card mt-4 divide-y divide-line overflow-hidden">
-        {rows.map((row) => {
-          const rank = r.board.indexOf(row) + 1;
-          const tone = toneOf(row.pnl);
-          return (
-            <li key={row.trader}>
-              <Link href={ROUTES.trader(row.trader, r.token.address)} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2">
-                <span className="num w-10 shrink-0 text-sm font-bold text-muted">#{rank}</span>
-                <span className="min-w-0 flex-1">
-                  <span className="num block truncate font-semibold">{short(row.trader)}</span>
-                  <span className="block text-[12.5px] text-muted">
-                    {row.trades} trades · in {usd(row.usdIn)}
-                  </span>
-                </span>
-                <span className="text-right">
-                  <span className={cx('num block font-bold', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{usd(row.pnl, { signed: true })}</span>
-                  <span className="num block text-[12.5px] text-muted">{pct(row.roi, { signed: true })}</span>
-                </span>
-                <ArrowUpRight className="size-4 shrink-0 text-muted" aria-hidden />
-              </Link>
-            </li>
-          );
-        })}
-      </ol>
-      {you !== null && (
-        <p className="mt-3 text-sm text-muted">
-          Your run would sit at <b className="num text-ink">#{placement(you, r.board)}</b>. Tap a wallet to call its receipt.
-        </p>
+      {r.board.length === 0 ? (
+        <p className="panel mt-2 px-4 py-6 text-[13px] text-muted">No recent trades in the feed.</p>
+      ) : (
+        <div className="panel mt-2 overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead className="text-left text-muted">
+              <tr className="border-b border-line">
+                <Th>#</Th>
+                <Th>Wallet</Th>
+                <Th right wide>
+                  Trades
+                </Th>
+                <Th right>Bought</Th>
+                <Th right>P&L</Th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {rows.map((row) => (
+                <tr key={row.trader} className="transition-colors hover:bg-hover">
+                  <Td>
+                    <span className="text-muted">{r.board.indexOf(row) + 1}</span>
+                  </Td>
+                  <Td>
+                    <Link href={ROUTES.trader(row.trader, r.token.address)} className="font-medium underline-offset-2 hover:underline">
+                      {short(row.trader)}
+                    </Link>
+                  </Td>
+                  <Td right wide>
+                    {row.trades}
+                  </Td>
+                  <Td right>{usd(row.usdIn)}</Td>
+                  <Td right>
+                    <span className={cx('font-medium', row.pnl > 0 ? 'text-pos' : row.pnl < 0 && 'text-neg')}>{usd(row.pnl, { signed: true })}</span>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
@@ -463,7 +525,7 @@ function simDoc(r: TokenReceipts, s: SimResult, entry: number, exit: number, hol
   return {
     lines: [
       { t: 'title', text: 'RECEIPTS' },
-      { t: 'center', text: `APE SIMULATOR · $${token.symbol}`, muted: true },
+      { t: 'center', text: `PAPER TRADE · $${token.symbol}`, muted: true },
       { t: 'center', text: `${token.chainName.toUpperCase()} · ${dateTime(now)}`, muted: true },
       { t: 'dash' },
       { t: 'row', left: 'BUY', right: usd(bag) },
@@ -474,15 +536,15 @@ function simDoc(r: TokenReceipts, s: SimResult, entry: number, exit: number, hol
       { t: 'row', left: '  AT', right: price(s.exitPrice), muted: true },
       { t: 'row', left: 'HELD FOR', right: span(held) },
       { t: 'dash' },
-      { t: 'row', left: holdNow ? 'BAG WORTH NOW' : 'SOLD FOR', right: usd(s.out) },
-      { t: 'row', left: 'BEST EXIT WAS', right: `${usd(s.bestOut)} · ${day(s.bestTs)}`, muted: true },
+      { t: 'row', left: holdNow ? 'WORTH NOW' : 'SOLD FOR', right: usd(s.out) },
+      { t: 'row', left: 'BEST EXIT', right: `${usd(s.bestOut)} · ${day(s.bestTs)}`, muted: true },
       { t: 'dash' },
       { t: 'total', left: 'P&L', right: usd(s.pnl, { signed: true }), sub: pct(s.roi, { signed: true }), tone: toneOf(s.pnl) },
       { t: 'row', left: 'VS RECENT TRADERS', right: `#${place} of ${r.board.length + 1}` },
       { t: 'rank', name: rank.name, line: rank.line },
       { t: 'barcode', seed: `${token.address}:${entry}:${exit}` },
       { t: 'center', text: SITE_HOST, muted: true },
-      { t: 'center', text: 'a game · not financial advice', muted: true },
+      { t: 'center', text: 'paper money · not financial advice', muted: true },
     ],
     stamp: stampOf(s.pnl),
   };

@@ -76,6 +76,30 @@ export function toSeries(ohlcv: readonly number[][]): { series: [number, number]
   return { series, ath, highs: rows.map((c): [number, number] => [c[0]!, c[2]!]) };
 }
 
+/** The candle price at a time: the last close at or before it, or the live price after the chart ends. */
+export function priceAt(series: readonly [number, number][], ts: number, live: number): number {
+  if (series.length === 0) return live;
+  if (ts > series.at(-1)![0] + 3600) return live;
+  let lo = 0;
+  let hi = series.length - 1;
+  if (ts <= series[0]![0]) return series[0]![1];
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (series[mid]![0] <= ts) lo = mid;
+    else hi = mid - 1;
+  }
+  return series[lo]![1];
+}
+
+/** Balance changes read off the chain as trades, priced from the chart. */
+export function movesToTrades(moves: readonly { tx: string; ts: number; delta: number }[], owner: string, series: readonly [number, number][], live: number): Trade[] {
+  return moves.map((m) => {
+    const tokens = Math.abs(m.delta);
+    const priceUsd = priceAt(series, m.ts, live);
+    return { tx: m.tx, ts: m.ts, trader: owner, side: m.delta > 0 ? 'buy' : 'sell', tokens, usd: tokens * priceUsd, priceUsd };
+  });
+}
+
 /* ---------- the maths ---------- */
 
 /** For any time, the highest price seen after it: what a seller could have had by holding on. */

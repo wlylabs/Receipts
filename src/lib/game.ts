@@ -36,7 +36,7 @@ export interface Streak {
 export const NO_STREAK: Streak = { current: 0, best: 0, calls: 0, right: 0 };
 
 export interface Recent {
-  kind: 'trader' | 'token';
+  kind: 'trader' | 'token' | 'wallet';
   address: string;
   /** The token a trader's receipt was pulled on. */
   ca?: string;

@@ -4,43 +4,48 @@ import Link from 'next/link';
 import { RotateCw } from 'lucide-react';
 import type { ApiError } from '../lib/types';
 
-/** The printer feeding paper while an address is read. */
-export function Printing({ what }: { what: string }) {
+/** A quiet placeholder in the page's own shape while data loads. */
+export function Loading({ what }: { what: string }) {
   return (
-    <div className="mx-auto flex max-w-sm flex-col items-center py-16 text-center" role="status" aria-live="polite">
-      <div className="relative h-36 w-56">
-        <div className="absolute inset-x-0 top-0 z-10 h-10 rounded-xl border border-line bg-ink shadow-lg">
-          <div className="absolute inset-x-6 bottom-2 h-1.5 rounded-full bg-black/60" />
-          <span className="absolute right-3 top-3 size-2 animate-pulse rounded-full bg-hi" />
-        </div>
-        <div className="absolute inset-x-8 top-8 h-28 overflow-hidden">
-          <div className="paper feed h-40 px-3 pt-6">
-            {[70, 90, 55, 80, 65, 85].map((w, i) => (
-              <div key={i} className="mb-2 h-1.5 rounded-sm bg-[#d9d3c4]" style={{ width: `${w}%` }} />
-            ))}
-          </div>
+    <div className="mx-auto max-w-6xl px-4 pt-8 sm:px-6" role="status" aria-live="polite">
+      <div className="flex items-center gap-3">
+        <div className="skeleton size-10 rounded-full" />
+        <div className="space-y-2">
+          <div className="skeleton h-4 w-32" />
+          <div className="skeleton h-3 w-48" />
         </div>
       </div>
-      <p className="mt-4 text-lg font-semibold">Printing…</p>
-      <p className="mt-1 text-sm text-muted">{what}</p>
+      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <div className="skeleton aspect-[16/9] w-full rounded-[14px]" />
+        <div className="skeleton h-80 rounded-[14px]" />
+      </div>
+      <p className="mt-4 text-[13px] text-muted">{what}</p>
     </div>
   );
 }
 
 export function Failure({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   const title =
-    error.code === 'not-found' ? 'Token not found' : error.code === 'unsupported' ? 'Chain not supported yet' : error.code === 'no-trades' ? 'Nothing to print' : error.code === 'invalid' ? 'That address doesn’t parse' : 'The printer jammed';
+    error.code === 'not-found'
+      ? 'Nothing found'
+      : error.code === 'unsupported'
+        ? 'Chain not supported yet'
+        : error.code === 'no-trades'
+          ? 'No trades to show'
+          : error.code === 'invalid'
+            ? 'Check the address'
+            : 'Couldn’t load that';
   return (
-    <div className="card mx-auto max-w-md p-6 text-center" role="alert">
-      <p className="text-2xl font-bold">{title}</p>
-      <p className="mt-2 text-ink-2">{error.error}</p>
+    <div className="mx-auto max-w-md px-4 py-16 text-center" role="alert">
+      <p className="text-lg font-semibold">{title}</p>
+      <p className="mt-1.5 text-[14px] leading-relaxed text-muted">{error.error}</p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {error.code === 'upstream' && (
-          <button type="button" onClick={onRetry} className="btn btn-hi">
+          <button type="button" onClick={onRetry} className="btn btn-primary">
             <RotateCw className="size-4" aria-hidden /> Try again
           </button>
         )}
-        <Link href="/#paste" className="btn btn-ghost">
+        <Link href="/#paste" className="btn btn-quiet">
           Paste another
         </Link>
       </div>

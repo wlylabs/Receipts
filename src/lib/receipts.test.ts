@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanAddress, isAddress, leaderboard, peakAfter, placement, position, rankOf, sameAddress, simulate, toSeries, toTrades } from './receipts';
+import { cleanAddress, isAddress, movesToTrades, priceAt, leaderboard, peakAfter, placement, position, rankOf, sameAddress, simulate, toSeries, toTrades } from './receipts';
 import type { GtTrade, Trade } from './types';
 
 const SOL = '2eZJN9uAvrsYjcx45xph2dZAyAsX6oLDpgVzsNNSKxQr';
@@ -107,5 +107,26 @@ describe('rankOf', () => {
     expect(rankOf(-0.9)).toBe('exit-liquidity');
     expect(rankOf(0.5)).toBe('profit-taker');
     expect(rankOf(null)).toBe('breakeven');
+  });
+});
+
+describe('priceAt', () => {
+  const s: [number, number][] = [
+    [100, 1],
+    [200, 2],
+    [300, 3],
+  ];
+  it('takes the last close at or before the time', () => {
+    expect(priceAt(s, 250, 9)).toBe(2);
+    expect(priceAt(s, 50, 9)).toBe(1);
+    expect(priceAt(s, 300, 9)).toBe(3);
+    expect(priceAt(s, 99_999, 9)).toBe(9);
+  });
+  it('turns balance changes into priced buys and sells', () => {
+    const t = movesToTrades([{ tx: 'a', ts: 210, delta: 10 }, { tx: 'b', ts: 310, delta: -4 }], SOL, s, 9);
+    expect(t.map((x) => [x.side, x.tokens, x.usd])).toEqual([
+      ['buy', 10, 20],
+      ['sell', 4, 12],
+    ]);
   });
 });

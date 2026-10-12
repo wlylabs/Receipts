@@ -1,9 +1,9 @@
 export function Logo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden>
-      <rect width="32" height="32" rx="8" fill="#ffd23f" />
-      <path d="M9 6h14v20l-2.33-1.6L18.33 26 16 24.4 13.67 26l-2.34-1.6L9 26z" fill="#fbf8f1" stroke="#141414" strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M12 11h8M12 14.5h8M12 18h5" stroke="#141414" strokeWidth="1.6" strokeLinecap="round" />
+    <svg viewBox="0 0 24 24" className={className} aria-hidden fill="none">
+      <rect width="24" height="24" rx="6" fill="currentColor" />
+      <path d="M7.5 5.5h9v13l-1.5-1-1.5 1-1.5-1-1.5 1-1.5-1-1.5 1z" fill="var(--bg)" />
+      <path d="M9.5 9h5M9.5 11.5h5M9.5 14h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
     </svg>
   );
 }

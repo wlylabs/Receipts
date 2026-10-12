@@ -3,11 +3,11 @@ import type { Tone } from './game';
 
 const W = 1080;
 const PAD = 84;
-const PAPER = '#fbf8f1';
-const INK = '#1b1a17';
-const MUTED = '#6e6a60';
-const LINE = '#d9d3c4';
-const tone = (t: Tone | undefined) => (t === 'pos' ? '#0f7a43' : t === 'neg' ? '#b42318' : INK);
+const PAPER = '#ffffff';
+const INK = '#18181b';
+const MUTED = '#71717a';
+const LINE = '#d4d4d8';
+const tone = (t: Tone | undefined) => (t === 'pos' ? '#15803d' : t === 'neg' ? '#b91c1c' : INK);
 const MONO = "'JetBrains Mono', ui-monospace, Menlo, monospace";
 
 /**
@@ -24,19 +24,16 @@ export async function receiptPng(doc: ReceiptDoc, site: string): Promise<Blob> {
   c.width = W;
   c.height = H;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#141414';
+  g.fillStyle = '#f4f4f5';
   g.fillRect(0, 0, W, H);
-  // dot grid on the counter
-  g.fillStyle = 'rgba(255,255,255,0.06)';
-  for (let x = 12; x < W; x += 30) for (let y = 12; y < H; y += 30) g.fillRect(x, y, 2, 2);
 
   const left = 90;
   const right = W - 90;
   const top = Math.round((H - paperH - 70) / 2);
   // paper with torn edges
   g.save();
-  g.shadowColor = 'rgba(0,0,0,0.5)';
-  g.shadowBlur = 50;
+  g.shadowColor = 'rgba(0,0,0,0.16)';
+  g.shadowBlur = 40;
   g.shadowOffsetY = 20;
   g.fillStyle = PAPER;
   g.beginPath();
@@ -132,7 +129,7 @@ export async function receiptPng(doc: ReceiptDoc, site: string): Promise<Blob> {
         break;
       case 'rank':
         g.strokeStyle = INK;
-        g.lineWidth = 5;
+        g.lineWidth = 3;
         g.strokeRect(x0, y + 10, x1 - x0, h - 26);
         g.textAlign = 'center';
         font(20);
@@ -169,7 +166,7 @@ export async function receiptPng(doc: ReceiptDoc, site: string): Promise<Blob> {
   g.translate(right - 118, top + 52);
   g.rotate(-0.16);
   g.globalAlpha = 0.85;
-  g.strokeStyle = g.fillStyle = s.tone === 'pos' ? '#0f7a43' : s.tone === 'neg' ? '#c0271a' : MUTED;
+  g.strokeStyle = g.fillStyle = s.tone === 'pos' ? '#15803d' : s.tone === 'neg' ? '#b91c1c' : MUTED;
   font(52, 800);
   g.textAlign = 'center';
   const sw = g.measureText(s.text).width + 60;
@@ -182,7 +179,7 @@ export async function receiptPng(doc: ReceiptDoc, site: string): Promise<Blob> {
 
   font(26, 700);
   g.textAlign = 'center';
-  g.fillStyle = '#ffd23f';
+  g.fillStyle = MUTED;
   g.fillText(`pull yours · ${site}`, mid, H - 70);
 
   return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas'))), 'image/png'));

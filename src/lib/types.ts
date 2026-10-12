@@ -142,6 +142,32 @@ export interface TraderReceipts {
   /** Where this wallet ranks among the window's traders, 1 is the top. */
   place: number;
   of: number;
+  /**
+   * Where the trades came from: the chain itself (every transfer of the token in or out of the
+   * wallet, so gifts count too) or the DEX feed's latest trades.
+   */
+  source: 'chain' | 'feed';
+  /** False when the history goes back further than was read. */
+  complete: boolean;
+}
+
+export interface Holding {
+  token: TokenInfo;
+  amount: number;
+  valueUsd: number;
+}
+
+/** GET /api/wallet/[address] */
+export interface WalletHoldings {
+  kind: 'wallet';
+  owner: string;
+  holdings: Holding[];
+}
+
+/** GET /api/resolve/[address] */
+export interface Resolved {
+  kind: 'token' | 'wallet';
+  address: string;
 }
 
 export interface ApiError {

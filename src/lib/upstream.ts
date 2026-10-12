@@ -85,3 +85,13 @@ export async function poolTrades(chain: string, pool: string): Promise<GtTrade[]
 export async function boostedTokens(): Promise<{ chainId: string; tokenAddress: string }[]> {
   return get<{ chainId: string; tokenAddress: string }[]>(`${DS}/token-boosts/top/v1`);
 }
+
+/** Pairs for up to 30 tokens on one chain at once. */
+export async function pairsFor(chain: string, addresses: string[]): Promise<DsPair[]> {
+  const out: DsPair[] = [];
+  for (let i = 0; i < addresses.length; i += 30) {
+    const list = addresses.slice(i, i + 30).join(',');
+    out.push(...((await get<DsPair[] | null>(`${DS}/tokens/v1/${chain}/${list}`)) ?? []));
+  }
+  return out;
+}

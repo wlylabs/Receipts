@@ -7,8 +7,8 @@ type Props = { params: Promise<{ ca: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { ca } = await params;
-  const title = `Ape into ${short(ca)}`;
-  const description = 'Pick an entry and an exit on the token’s real chart, print the receipt, and see where you’d rank among its real traders.';
+  const title = `Paper-trade ${short(ca)}`;
+  const description = 'Buy at any candle since launch, sell later or hold to now, and see where you’d rank among the token’s real traders.';
   return { title, description, alternates: { canonical: ROUTES.token(ca) }, openGraph: { title, description, url: ROUTES.token(ca) }, robots: { index: false } };
 }
 
