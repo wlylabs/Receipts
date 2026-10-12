@@ -1,113 +1,87 @@
 import 'server-only';
-import type { RawLaunch, RawPortfolio, RawRewards, RawTrade } from './types';
+import { CHAINS } from './chains';
+import { sameAddress } from './receipts';
+import type { DsPair, GtTrade } from './types';
 
 /**
- * bordrless.app's public read API. It sends no CORS headers, so only this app's route handlers
- * call it. Every answer is cached for a minute, so a busy page costs Bordrless one request a
- * minute per URL.
+ * DexScreener says what a token is and where it trades; GeckoTerminal has the pool's candles and
+ * latest trades. Both are public and free, so every answer is cached for a minute: a busy page
+ * costs each of them one request a minute per URL (GeckoTerminal allows about 30 a minute).
  */
-const UPSTREAM = process.env.BORDRLESS_API ?? 'https://bordrless.app/api';
+const DS = 'https://api.dexscreener.com';
+const GT = process.env.GECKOTERMINAL_API ?? 'https://api.geckoterminal.com/api/v2';
 const TTL = 60;
-const PAGE = 200;
-/** A token's whole history is paged 200 trades at a time; past this many pages it is cut short. */
-export const MAX_PAGES = 60;
 
 export class NotFound extends Error {}
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${UPSTREAM}/${path}`, {
-    headers: { accept: 'application/json', 'user-agent': 'Receipts (+https://github.com/wlylabs/receipts)' },
+async function get<T>(url: string, headers: Record<string, string> = {}): Promise<T> {
+  const res = await fetch(url, {
+    headers: { accept: 'application/json', 'user-agent': 'Receipts (+https://github.com/wlylabs/receipts)', ...headers },
     next: { revalidate: TTL },
     signal: AbortSignal.timeout(10_000),
   });
-  if (res.status === 404) throw new NotFound(path);
-  if (!res.ok) throw new Error(`bordrless ${res.status} ${path}`);
+  if (res.status === 404) throw new NotFound(url);
+  if (!res.ok) throw new Error(`${res.status} ${url}`);
   return (await res.json()) as T;
 }
 
-export async function getOverview(): Promise<{ solUsd: number }> {
-  const o = await get<{ solUsd: number }>('overview');
-  return { solUsd: o.solUsd };
-}
-
-/** One launch, or null when the address is not a Bordrless launch. */
-export async function getLaunch(mint: string): Promise<RawLaunch | null> {
-  try {
-    return await get<RawLaunch>(`launches/${mint}`);
-  } catch (e) {
-    if (e instanceof NotFound) return null;
-    throw e;
-  }
-}
-
-export async function listLaunches(sort: 'mcap' | 'volume', limit: number): Promise<RawLaunch[]> {
-  return (await get<{ launches: RawLaunch[] }>(`launches?sort=${sort}&limit=${limit}`)).launches;
-}
-
-export async function getPortfolio(owner: string): Promise<RawPortfolio | null> {
-  try {
-    return await get<RawPortfolio>(`portfolio/${owner}`);
-  } catch (e) {
-    if (e instanceof NotFound) return null;
-    throw e;
-  }
-}
-
-export async function getRewards(owner: string): Promise<RawRewards | null> {
-  try {
-    return await get<RawRewards>(`rewards/${owner}`);
-  } catch (e) {
-    if (e instanceof NotFound) return null;
-    throw e;
-  }
-}
-
-/** The newest page of a launch's trades, newest first. */
-export async function recentTrades(mint: string): Promise<RawTrade[]> {
-  return (await get<{ trades: RawTrade[] }>(`launches/${mint}/trades?limit=${PAGE}`)).trades ?? [];
-}
+const gt = <T>(path: string) => get<T>(`${GT}/${path}`, { accept: 'application/json;version=20230302' });
 
 /**
- * Every trade of a launch since it opened, oldest first. The API pages by timestamp (`before`
- * is exclusive), so a page is asked again from its last second to keep trades sharing that
- * second, and signatures drop the repeats.
+ * The token's deepest pool on a chain Receipts plays, or null. The address may also be a pair
+ * (people paste dexscreener.com links), which the search finds.
  */
-export async function allTrades(mint: string): Promise<{ trades: RawTrade[]; complete: boolean }> {
-  const seen = new Map<string, RawTrade>();
-  let before: number | null = null;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const q: string = `launches/${mint}/trades?limit=${PAGE}${before !== null ? `&before=${before}` : ''}`;
-    const batch = (await get<{ trades: RawTrade[] }>(q)).trades ?? [];
-    let added = 0;
-    for (const t of batch) {
-      if (!seen.has(t.signature)) {
-        seen.set(t.signature, t);
-        added++;
-      }
-    }
-    const last = batch.at(-1);
-    if (!last || batch.length < PAGE) return { trades: sortOldestFirst(seen), complete: true };
-    // a full page from one second: step past it rather than ask for the same page forever
-    const next: number = added === 0 ? last.ts : last.ts + 1;
-    before = next === before ? last.ts : next;
+export async function findPair(address: string): Promise<{ pair: DsPair; tokenAddress: string } | null> {
+  const byToken = (await get<{ pairs: DsPair[] | null }>(`${DS}/latest/dex/tokens/${address}`)).pairs ?? [];
+  const asBase = byToken.filter((p) => CHAINS[p.chainId] && sameAddress(p.baseToken.address, address));
+  let best = deepest(asBase);
+  if (!best) {
+    const found = (await get<{ pairs: DsPair[] | null }>(`${DS}/latest/dex/search?q=${encodeURIComponent(address)}`)).pairs ?? [];
+    best = deepest(found.filter((p) => CHAINS[p.chainId] && sameAddress(p.pairAddress, address)));
   }
-  return { trades: sortOldestFirst(seen), complete: false };
+  return best ? { pair: best, tokenAddress: best.baseToken.address } : null;
 }
 
-function sortOldestFirst(m: Map<string, RawTrade>): RawTrade[] {
-  return [...m.values()].sort((a, b) => a.ts - b.ts || a.slot - b.slot);
+function deepest(pairs: DsPair[]): DsPair | null {
+  return pairs.reduce<DsPair | null>((a, p) => (!a || (p.liquidity?.usd ?? 0) > (a.liquidity?.usd ?? 0) ? p : a), null);
 }
 
-/** Runs `fn` over `items` with at most `n` in flight. */
-export async function pool<T, R>(items: readonly T[], n: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let i = 0;
-  const worker = async () => {
-    while (i < items.length) {
-      const k = i++;
-      out[k] = await fn(items[k]!);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
-  return out;
+/** Whether the address has pairs on chains Receipts does not play. */
+export async function onOtherChain(address: string): Promise<string | null> {
+  const pairs = (await get<{ pairs: DsPair[] | null }>(`${DS}/latest/dex/tokens/${address}`)).pairs ?? [];
+  return pairs.find((p) => !CHAINS[p.chainId])?.chainId ?? null;
+}
+
+export type Timeframe = { tf: 'minute' | 'hour' | 'day'; agg: number; label: string; sec: number };
+
+/** A candle size that fits the pair's whole life into one page of 1,000 candles. */
+export function timeframeFor(ageSec: number): Timeframe {
+  const options: Timeframe[] = [
+    { tf: 'minute', agg: 1, label: '1m', sec: 60 },
+    { tf: 'minute', agg: 5, label: '5m', sec: 300 },
+    { tf: 'minute', agg: 15, label: '15m', sec: 900 },
+    { tf: 'hour', agg: 1, label: '1h', sec: 3600 },
+    { tf: 'hour', agg: 4, label: '4h', sec: 14_400 },
+    { tf: 'hour', agg: 12, label: '12h', sec: 43_200 },
+  ];
+  return options.find((o) => ageSec / o.sec <= 900) ?? { tf: 'day', agg: 1, label: '1d', sec: 86_400 };
+}
+
+/** The pool's candles in USD per token, as [ts, open, high, low, close, volume], newest first. */
+export async function candles(chain: string, pool: string, token: string, t: Timeframe): Promise<number[][]> {
+  const net = CHAINS[chain]!.gt;
+  const q = `aggregate=${t.agg}&limit=1000&currency=usd&token=${token}`;
+  const body = await gt<{ data?: { attributes?: { ohlcv_list?: number[][] } } }>(`networks/${net}/pools/${pool}/ohlcv/${t.tf}?${q}`);
+  return body.data?.attributes?.ohlcv_list ?? [];
+}
+
+/** The pool's latest trades (GeckoTerminal keeps up to 300 from the last day). */
+export async function poolTrades(chain: string, pool: string): Promise<GtTrade[]> {
+  const net = CHAINS[chain]!.gt;
+  return (await gt<{ data?: GtTrade[] }>(`networks/${net}/pools/${pool}/trades`)).data ?? [];
+}
+
+/** Tokens being promoted on DexScreener right now, for "pull a random receipt". */
+export async function boostedTokens(): Promise<{ chainId: string; tokenAddress: string }[]> {
+  return get<{ chainId: string; tokenAddress: string }[]>(`${DS}/token-boosts/top/v1`);
 }

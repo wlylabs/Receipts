@@ -10,8 +10,8 @@ import { placement, rankOf, simulate, type SimResult } from '../lib/receipts';
 import { pushRecent } from '../lib/recent';
 import type { ReceiptDoc } from '../lib/receiptDoc';
 import type { TokenReceipts } from '../lib/types';
-import { compact, dateTime, day, parseAmount, pct, short, sol, span, tinyPrice, usd } from '../lib/format';
-import { bordrlessToken, ROUTES, SITE_HOST, SITE_URL } from '../lib/site';
+import { compact, dateTime, day, parseAmount, pct, price, short, span, usd } from '../lib/format';
+import { ROUTES, SITE_HOST, SITE_URL } from '../lib/site';
 import { saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
@@ -20,7 +20,7 @@ import { Failure, Printing } from './States';
 import { PriceChart, type Marker } from './PriceChart';
 import { TokenImage } from './TokenImage';
 
-const BAGS = ['0.1', '0.5', '1', '5', '10'];
+const BAGS = ['10', '50', '100', '500', '1000'];
 const PLAY_MS = 2_600;
 
 interface Best {
@@ -35,16 +35,16 @@ export function TokenView({ ca }: { ca: string }) {
   const [, setRecent] = useStored<Recent[]>(KEYS.recent, []);
   const data = state.status === 'ready' ? state.data : null;
   useEffect(() => {
-    if (data) setRecent((r) => pushRecent(r, { kind: 'token', address: ca, label: `$${data.token.symbol}` }));
+    if (data) setRecent((r) => pushRecent(r, { kind: 'token', address: data.token.address, label: `$${data.token.symbol}` }));
   }, [data, ca, setRecent]);
 
-  if (state.status === 'loading') return <Printing what={`Reading every trade on ${short(ca)} since launch`} />;
+  if (state.status === 'loading') return <Printing what={`Reading ${short(ca)}’s chart and latest trades`} />;
   if (state.status === 'error') return <Failure error={state.error} onRetry={reload} />;
   return <ApeGame key={ca} r={state.data} />;
 }
 
 function ApeGame({ r }: { r: TokenReceipts }) {
-  const { token, series, board, stats } = r;
+  const { token, series, board } = r;
   const last = series.length - 1;
   const athIdx = Math.max(0, series.findIndex(([ts]) => ts === r.ath.ts));
   const dipIdx = useMemo(() => {
@@ -54,23 +54,23 @@ function ApeGame({ r }: { r: TokenReceipts }) {
   }, [series, athIdx, last]);
 
   const [now] = useState(() => Date.now() / 1000);
-  const [bag, setBag] = useState('1');
+  const [bag, setBag] = useState('100');
   const [entry, setEntry] = useState(0);
   const [exit, setExit] = useState(last);
   const [phase, setPhase] = useState<'setup' | 'playing' | 'done'>('setup');
   const [reveal, setReveal] = useState(0);
   const [shown, setShown] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [best, setBest] = useStored<Best | null>(KEYS.best(token.mint), null);
+  const [best, setBest] = useStored<Best | null>(KEYS.best(token.address), null);
   const [newBest, setNewBest] = useState(false);
   const ids = { bag: useId(), entry: useId(), exit: useId() };
   const resultRef = useRef<HTMLDivElement>(null);
 
   const amount = parseAmount(bag);
-  const bagOk = Number.isFinite(amount) && amount >= 0.01 && amount <= 1000;
+  const bagOk = Number.isFinite(amount) && amount >= 1 && amount <= 1_000_000;
   const holdNow = exit === last;
   const sim: SimResult = useMemo(
-    () => simulate({ series, entry, exit, sol: bagOk ? amount : 0, buyFeeBps: token.buyFeeBps, sellFeeBps: token.sellFeeBps, holdNow, nowPriceSol: token.priceSol }),
+    () => simulate({ series, entry, exit, usd: bagOk ? amount : 0, holdNow, nowPrice: token.priceUsd }),
     [series, entry, exit, amount, bagOk, token, holdNow],
   );
   const place = placement(sim.pnl, board);
@@ -142,7 +142,7 @@ function ApeGame({ r }: { r: TokenReceipts }) {
   const markers: Marker[] = sim.ok
     ? [
         { ts: series[entry]![0], price: series[entry]![1], kind: 'entry' },
-        ...(showRun && reveal < exit ? [] : [{ ts: series[exit]![0], price: holdNow ? token.priceSol : series[exit]![1], kind: 'exit' as const }]),
+        ...(showRun && reveal < exit ? [] : [{ ts: series[exit]![0], price: holdNow ? token.priceUsd : series[exit]![1], kind: 'exit' as const }]),
       ]
     : [];
   const live = showRun ? sim.path[Math.max(0, Math.min(sim.path.length - 1, reveal - entry))] : null;
@@ -150,9 +150,9 @@ function ApeGame({ r }: { r: TokenReceipts }) {
 
   const share = async () => {
     const res = await shareLink(
-      `${SITE_URL}${ROUTES.token(token.mint)}`,
+      `${SITE_URL}${ROUTES.token(token.address)}`,
       'Receipts',
-      `Aped ${sol(amount)} into $${token.symbol}: ${sol(sim.pnl, { signed: true })} (${pct(sim.roi, { signed: true })}). #${place} of ${board.length + 1} traders. Beat it:`,
+      `Aped ${usd(amount)} into $${token.symbol}: ${usd(sim.pnl, { signed: true })} (${pct(sim.roi, { signed: true })}). #${place} of ${board.length + 1} recent traders. Beat it:`,
     );
     if (res === 'copied') toast('Link copied.');
     else if (res === 'failed') toast('Couldn’t share. Copy the address bar instead.');
@@ -183,25 +183,25 @@ function ApeGame({ r }: { r: TokenReceipts }) {
             ${token.symbol} <span className="text-base font-medium text-muted sm:text-lg">{token.name}</span>
           </h1>
         </div>
-        <a href={bordrlessToken(token.mint)} target="_blank" rel="noreferrer" className="btn btn-ghost h-9 min-h-0 shrink-0 px-3 text-sm">
-          <span className="hidden sm:inline">bordrless</span> <ArrowUpRight className="size-4" aria-hidden />
+        <a href={token.url} target="_blank" rel="noreferrer" className="btn btn-ghost h-9 min-h-0 shrink-0 px-3 text-sm">
+          <span className="hidden sm:inline">DexScreener</span> <ArrowUpRight className="size-4" aria-hidden />
         </a>
       </header>
       <dl className="no-scrollbar -mx-4 mt-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:grid sm:grid-cols-6 sm:px-0">
-        <Stat k="Price" v={usd(token.priceUsd)} />
+        <Stat k="Price" v={price(token.priceUsd)} />
+        <Stat k="24h" v={token.change24h === null ? '-' : pct(token.change24h / 100, { signed: true })} tone={token.change24h === null ? null : toneOf(token.change24h)} />
         <Stat k="Mcap" v={usd(token.mcapUsd)} />
-        <Stat k="Holders" v={compact(token.holders)} />
-        <Stat k="Traders" v={compact(stats.traders)} />
-        <Stat k="Volume" v={`${compact(stats.volumeSol)} SOL`} />
-        <Stat k="Age" v={span(now - token.createdAt)} />
+        <Stat k="Liquidity" v={usd(token.liquidityUsd)} />
+        <Stat k="Vol 24h" v={usd(token.volume24hUsd)} />
+        <Stat k="Age" v={token.createdAt ? span(now - token.createdAt) : '-'} />
       </dl>
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-10">
         <section className="card p-4 sm:p-6" aria-label="Your trade">
           <div className="flex items-baseline justify-between gap-3">
-            <p className="label text-muted">Price since launch · log scale</p>
+            <p className="label text-muted">{r.candle} candles · log scale</p>
             <p className={cx('num text-sm font-bold', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')} aria-live="polite">
-              {sim.ok ? `${sol(showRun ? (live?.pnl ?? 0) : sim.pnl, { signed: true })}` : '—'}
+              {sim.ok ? usd(showRun ? (live?.pnl ?? 0) : sim.pnl, { signed: true }) : '—'}
             </p>
           </div>
           <PriceChart
@@ -230,16 +230,16 @@ function ApeGame({ r }: { r: TokenReceipts }) {
                   className="num h-12 min-w-0 flex-1 bg-transparent text-lg font-semibold outline-none"
                   aria-invalid={!bagOk}
                 />
-                <span className="num text-sm font-semibold text-muted">SOL</span>
+                <span className="num text-sm font-semibold text-muted">USD</span>
               </div>
               <div className="no-scrollbar mt-2 flex gap-1.5 overflow-x-auto">
                 {BAGS.map((b) => (
                   <Chip key={b} on={bagOk && amount === Number(b)} onClick={() => edit(setBag)(b)}>
-                    {b}
+                    ${compact(Number(b))}
                   </Chip>
                 ))}
               </div>
-              {!bagOk && bag !== '' && <p className="mt-1.5 text-[13px] text-neg">Between 0.01 and 1,000 SOL.</p>}
+              {!bagOk && bag !== '' && <p className="mt-1.5 text-[13px] text-neg">Between $1 and $1,000,000.</p>}
             </div>
 
             <Scrub
@@ -249,7 +249,7 @@ function ApeGame({ r }: { r: TokenReceipts }) {
               max={last}
               onChange={setEntryAt}
               thumb="var(--hi)"
-              detail={`${day(series[entry]![0])} · ${tinyPrice(series[entry]![1])} SOL`}
+              detail={`${day(series[entry]![0])} · ${price(series[entry]![1])}`}
               chips={presets}
             />
             <Scrub
@@ -259,7 +259,7 @@ function ApeGame({ r }: { r: TokenReceipts }) {
               max={last}
               onChange={setExitAt}
               thumb="var(--ink)"
-              detail={holdNow ? `Now · ${tinyPrice(token.priceSol)} SOL` : `${day(series[exit]![0])} · ${tinyPrice(series[exit]![1])} SOL`}
+              detail={holdNow ? `Now · ${price(token.priceUsd)}` : `${day(series[exit]![0])} · ${price(series[exit]![1])}`}
               chips={exits}
             />
 
@@ -268,9 +268,8 @@ function ApeGame({ r }: { r: TokenReceipts }) {
               {phase === 'done' ? 'Run it again' : 'Print my receipt'}
             </button>
             <p className="text-[13px] leading-snug text-muted">
-              Buys and sells at the price real traders paid at that moment, with ${token.symbol}’s own fees ({pct(token.buyFeeBps / 10_000)} in, {pct(token.sellFeeBps / 10_000)} out). A big bag
-              would move a small pool more than this shows.
-              {!r.complete && ' The oldest trades were too many to read, so the chart starts later than launch.'}
+              Buys and sells at the candle’s closing price on {token.dex} ({token.chainName}). DEX fees, token taxes and slippage are not included, and a big bag would move a small pool
+              more than this shows.
             </p>
           </div>
         </section>
@@ -280,7 +279,7 @@ function ApeGame({ r }: { r: TokenReceipts }) {
             <div className="card flex items-center gap-3 px-4 py-3">
               <Trophy className="size-5 shrink-0 text-[#c98a00]" aria-hidden />
               <p className="min-w-0 flex-1 text-sm">
-                Your best on ${token.symbol}: <b className={cx('num', best.pnl > 0 ? 'text-pos' : 'text-neg')}>{sol(best.pnl, { signed: true })}</b>{' '}
+                Your best on ${token.symbol}: <b className={cx('num', best.pnl > 0 ? 'text-pos' : 'text-neg')}>{usd(best.pnl, { signed: true })}</b>{' '}
                 <span className="text-muted">
                   · #{best.place} of {best.of}
                 </span>
@@ -304,7 +303,7 @@ function ApeGame({ r }: { r: TokenReceipts }) {
           {phase === 'done' && (
             <div className="pop grid grid-cols-2 gap-2">
               <p className="col-span-2 text-center text-[15px]">
-                You’d place <b className="num">#{place}</b> of <b className="num">{board.length + 1}</b> traders on ${token.symbol}.
+                You’d place <b className="num">#{place}</b> of <b className="num">{board.length + 1}</b> recent traders on ${token.symbol}.
               </p>
               <button type="button" onClick={save} disabled={saving} className="btn btn-ghost">
                 {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
@@ -323,11 +322,11 @@ function ApeGame({ r }: { r: TokenReceipts }) {
   );
 }
 
-function Stat({ k, v }: { k: string; v: string }) {
+function Stat({ k, v, tone }: { k: string; v: string; tone?: 'pos' | 'neg' | null }) {
   return (
     <div className="min-w-28 shrink-0 rounded-xl border border-line bg-surface px-3 py-2 sm:min-w-0">
       <dt className="label text-muted">{k}</dt>
-      <dd className="num truncate font-bold">{v}</dd>
+      <dd className={cx('num truncate font-bold', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{v}</dd>
     </div>
   );
 }
@@ -402,10 +401,10 @@ function Board({ r, you }: { r: TokenReceipts; you: number | null }) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="board-title" className="text-xl font-bold tracking-tight sm:text-2xl">
-            Real receipts on ${r.token.symbol}
+            Recent receipts on ${r.token.symbol}
           </h2>
           <p className="mt-1 text-sm text-muted">
-            {n} wallets · {r.stats.trades.toLocaleString('en-US')} trades · bags valued at today’s price
+            {n} wallets · latest {r.window.trades} trades ({span(r.window.to - r.window.from)}) · bags valued at today’s price
           </p>
         </div>
         <div role="tablist" aria-label="Board" className="flex rounded-[12px] border border-line bg-surface-2 p-1">
@@ -429,16 +428,16 @@ function Board({ r, you }: { r: TokenReceipts; you: number | null }) {
           const tone = toneOf(row.pnl);
           return (
             <li key={row.trader}>
-              <Link href={ROUTES.trader(row.trader)} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2">
+              <Link href={ROUTES.trader(row.trader, r.token.address)} className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2">
                 <span className="num w-10 shrink-0 text-sm font-bold text-muted">#{rank}</span>
                 <span className="min-w-0 flex-1">
                   <span className="num block truncate font-semibold">{short(row.trader)}</span>
                   <span className="block text-[12.5px] text-muted">
-                    {row.trades} trades · in {sol(row.solIn)}
+                    {row.trades} trades · in {usd(row.usdIn)}
                   </span>
                 </span>
                 <span className="text-right">
-                  <span className={cx('num block font-bold', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{sol(row.pnl, { signed: true })}</span>
+                  <span className={cx('num block font-bold', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{usd(row.pnl, { signed: true })}</span>
                   <span className="num block text-[12.5px] text-muted">{pct(row.roi, { signed: true })}</span>
                 </span>
                 <ArrowUpRight className="size-4 shrink-0 text-muted" aria-hidden />
@@ -459,29 +458,29 @@ function Board({ r, you }: { r: TokenReceipts; you: number | null }) {
 function simDoc(r: TokenReceipts, s: SimResult, entry: number, exit: number, holdNow: boolean, place: number, bag: number): ReceiptDoc {
   const { token, series } = r;
   const rank = RANKS[rankOf(s.roi)];
-  const held = series[exit]![0] - series[entry]![0];
+  const now = Date.now() / 1000;
+  const held = (holdNow ? now : series[exit]![0]) - series[entry]![0];
   return {
     lines: [
       { t: 'title', text: 'RECEIPTS' },
       { t: 'center', text: `APE SIMULATOR · $${token.symbol}`, muted: true },
-      { t: 'center', text: dateTime(Date.now() / 1000), muted: true },
+      { t: 'center', text: `${token.chainName.toUpperCase()} · ${dateTime(now)}`, muted: true },
       { t: 'dash' },
-      { t: 'row', left: 'BUY', right: sol(bag) },
+      { t: 'row', left: 'BUY', right: usd(bag) },
       { t: 'row', left: '  ON', right: day(series[entry]![0]), muted: true },
-      { t: 'row', left: '  AT', right: `${tinyPrice(s.entryPrice)} SOL`, muted: true },
+      { t: 'row', left: '  AT', right: price(s.entryPrice), muted: true },
       { t: 'row', left: 'TOKENS', right: compact(s.tokens) },
       { t: 'row', left: holdNow ? 'HELD TO' : 'SELL', right: holdNow ? 'NOW' : day(series[exit]![0]) },
-      { t: 'row', left: '  AT', right: `${tinyPrice(s.exitPrice)} SOL`, muted: true },
-      { t: 'row', left: 'HELD FOR', right: span(holdNow ? Date.now() / 1000 - series[entry]![0] : held) },
-      { t: 'row', left: 'FEES', right: `-${sol(s.fees)}`, tone: 'neg' },
+      { t: 'row', left: '  AT', right: price(s.exitPrice), muted: true },
+      { t: 'row', left: 'HELD FOR', right: span(held) },
       { t: 'dash' },
-      { t: 'row', left: holdNow ? 'BAG WORTH NOW' : 'SOLD FOR', right: sol(s.out) },
-      { t: 'row', left: 'BEST EXIT WAS', right: `${sol(s.bestOut)} · ${day(s.bestTs)}`, muted: true },
+      { t: 'row', left: holdNow ? 'BAG WORTH NOW' : 'SOLD FOR', right: usd(s.out) },
+      { t: 'row', left: 'BEST EXIT WAS', right: `${usd(s.bestOut)} · ${day(s.bestTs)}`, muted: true },
       { t: 'dash' },
-      { t: 'total', left: 'P&L', right: sol(s.pnl, { signed: true }), sub: `${usd(s.pnl * r.solUsd, { signed: true })} · ${pct(s.roi, { signed: true })}`, tone: toneOf(s.pnl) },
-      { t: 'row', left: 'VS REAL TRADERS', right: `#${place} of ${r.board.length + 1}` },
+      { t: 'total', left: 'P&L', right: usd(s.pnl, { signed: true }), sub: pct(s.roi, { signed: true }), tone: toneOf(s.pnl) },
+      { t: 'row', left: 'VS RECENT TRADERS', right: `#${place} of ${r.board.length + 1}` },
       { t: 'rank', name: rank.name, line: rank.line },
-      { t: 'barcode', seed: `${token.mint}:${entry}:${exit}` },
+      { t: 'barcode', seed: `${token.address}:${entry}:${exit}` },
       { t: 'center', text: SITE_HOST, muted: true },
       { t: 'center', text: 'a game · not financial advice', muted: true },
     ],

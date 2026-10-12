@@ -8,7 +8,7 @@ export function Header() {
         <Link href="/" className="flex items-center gap-2.5 rounded-md">
           <Logo className="size-8" />
           <span className="text-lg font-bold tracking-tight">Receipts</span>
-          <span className="label hidden rounded-full border border-line px-2 py-0.5 text-muted sm:inline">on Bordrless</span>
+          <span className="label hidden rounded-full border border-line px-2 py-0.5 text-muted sm:inline">any DEX token</span>
         </Link>
         <nav aria-label="Main" className="flex items-center gap-1 text-sm font-semibold">
           <Link href="/#paste" className="rounded-lg px-3 py-2 text-ink-2 hover:bg-surface-2 hover:text-ink">

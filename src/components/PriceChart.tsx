@@ -50,7 +50,7 @@ export function PriceChart({
       }
     }
     for (const m of markers) {
-      if (m.price > 0) {
+      if (m.price > 0 && m.ts >= t0) {
         lo = Math.min(lo, m.price);
         hi = Math.max(hi, m.price);
       }
@@ -96,7 +96,7 @@ export function PriceChart({
           ATH
         </span>
       )}
-      {markers.map((m, i) => (
+      {markers.filter((m) => m.ts >= series[0]![0] && m.ts <= series.at(-1)![0] + 86_400).map((m, i) => (
         <span
           key={i}
           title={m.label}

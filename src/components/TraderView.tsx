@@ -3,16 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowUpRight, Check, ChevronDown, Dices, Download, Flame, Link2, Loader2, ThumbsDown, ThumbsUp, X } from 'lucide-react';
+import { ArrowUpRight, Check, Coins, Dices, Download, Flame, Link2, Loader2, ThumbsDown, ThumbsUp, X } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { KEYS, NO_STREAK, RANKS, stampOf, toneOf, type Recent, type Streak } from '../lib/game';
 import { rankOf } from '../lib/receipts';
 import { pushRecent } from '../lib/recent';
+import { CHAINS } from '../lib/chains';
 import type { Line, ReceiptDoc } from '../lib/receiptDoc';
-import type { IsToken, Position, TraderReceipts } from '../lib/types';
-import { dateTime, day, pct, short, sol, tinyPrice, usd } from '../lib/format';
-import { ROUTES, SITE_HOST, SITE_URL, solscanAccount, solscanTx } from '../lib/site';
+import type { TraderReceipts } from '../lib/types';
+import { compact, dateTime, day, pct, price, short, span, usd } from '../lib/format';
+import { ROUTES, SITE_HOST, SITE_URL } from '../lib/site';
 import { saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
@@ -25,26 +26,23 @@ type Call = 'profit' | 'rekt' | 'skip';
 const LINE_MS = 95;
 const MAX_ITEMS = 10;
 
-export function TraderView({ address }: { address: string }) {
-  const router = useRouter();
-  const { state, reload } = useApi<TraderReceipts | IsToken>(`/api/trader/${address}/`);
+export function TraderView({ address, ca }: { address: string; ca: string }) {
+  const { state, reload } = useApi<TraderReceipts>(ca ? `/api/trader/${address}/?ca=${encodeURIComponent(ca)}` : null);
   const [, setRecent] = useStored<Recent[]>(KEYS.recent, []);
-
   const data = state.status === 'ready' ? state.data : null;
-  // a CA pasted in the trader box goes to the token game
   useEffect(() => {
-    if (data?.kind === 'is-token') router.replace(ROUTES.token(data.mint));
-    else if (data?.kind === 'trader') setRecent((r) => pushRecent(r, { kind: 'trader', address, label: short(address) }));
-  }, [data, address, router, setRecent]);
+    if (data) setRecent((r) => pushRecent(r, { kind: 'trader', address, ca: data.token.address, label: `${short(address)} · $${data.token.symbol}` }));
+  }, [data, address, setRecent]);
 
-  if (state.status === 'loading' || data?.kind === 'is-token')
-    return <Printing what={data?.kind === 'is-token' ? 'That’s a token CA — opening the token game.' : `Reading every Bordrless trade from ${short(address)}`} />;
+  if (!ca) return <Failure error={{ code: 'invalid', error: 'Paste the token this wallet traded, too.' }} onRetry={reload} />;
+  if (state.status === 'loading') return <Printing what={`Finding ${short(address)} in the token’s latest trades`} />;
   if (state.status === 'error') return <Failure error={state.error} onRetry={reload} />;
-  return <TraderGame key={address} r={data as TraderReceipts} />;
+  return <TraderGame key={`${address}:${ca}`} r={state.data} />;
 }
 
 function TraderGame({ r }: { r: TraderReceipts }) {
   const router = useRouter();
+  const [now] = useState(() => Date.now() / 1000);
   const [call, setCall] = useState<Call | null>(null);
   const [shown, setShown] = useState(0);
   const [streak, setStreak] = useStored<Streak>(KEYS.streak, NO_STREAK);
@@ -54,13 +52,14 @@ function TraderGame({ r }: { r: TraderReceipts }) {
   const paperRef = useRef<HTMLDivElement>(null);
 
   const doc = useMemo(() => traderDoc(r), [r]);
-  const t = r.totals;
-  const won = t.pnl > 0;
+  const p = r.position;
+  const { token } = r;
+  const chain = CHAINS[token.chain];
+  const won = p.pnl > 0;
   const total = doc.lines.length;
   const done = call !== null && shown >= total;
   const right = call === 'profit' ? won : call === 'rekt' ? !won : null;
 
-  // print a line at a time once the call is in
   useEffect(() => {
     if (call === null || shown >= total) return;
     const id = setTimeout(() => setShown((s) => s + 1), LINE_MS);
@@ -87,9 +86,9 @@ function TraderGame({ r }: { r: TraderReceipts }) {
     setNexting(true);
     try {
       const res = await fetch('/api/random', { cache: 'no-store' });
-      const body = (await res.json()) as { address?: string };
-      if (!body.address) throw new Error('none');
-      router.push(ROUTES.trader(body.address));
+      const body = (await res.json()) as { address?: string; ca?: string };
+      if (!body.address || !body.ca) throw new Error('none');
+      router.push(ROUTES.trader(body.address, body.ca));
     } catch {
       setNexting(false);
       toast('Couldn’t find another trader right now.');
@@ -97,8 +96,8 @@ function TraderGame({ r }: { r: TraderReceipts }) {
   };
 
   const share = async () => {
-    const rank = RANKS[rankOf(t.roi)].name;
-    const res = await shareLink(`${SITE_URL}${ROUTES.trader(r.owner)}`, 'Receipts', `Pulled the receipts on ${short(r.owner)}: ${sol(t.pnl, { signed: true })} on Bordrless. Rank: ${rank}.`);
+    const rank = RANKS[rankOf(p.roi)].name;
+    const res = await shareLink(`${SITE_URL}${ROUTES.trader(r.owner, token.address)}`, 'Receipts', `Pulled the receipts on ${short(r.owner)} in $${token.symbol}: ${usd(p.pnl, { signed: true })}. Rank: ${rank}.`);
     if (res === 'copied') toast('Link copied.');
     else if (res === 'failed') toast('Couldn’t share. Copy the address bar instead.');
   };
@@ -108,7 +107,7 @@ function TraderGame({ r }: { r: TraderReceipts }) {
     try {
       const { receiptPng } = await import('../lib/receiptImage');
       const blob = await receiptPng(doc, SITE_HOST);
-      const res = await saveFile(new File([blob], `receipt-${r.owner.slice(0, 6)}.png`, { type: 'image/png' }));
+      const res = await saveFile(new File([blob], `receipt-${r.owner.slice(0, 6)}-${slug(token.symbol)}.png`, { type: 'image/png' }));
       if (res === 'saved') toast('Receipt saved.');
     } catch {
       toast('Couldn’t make the image. Try again.');
@@ -117,11 +116,13 @@ function TraderGame({ r }: { r: TraderReceipts }) {
     }
   };
 
+  const markers = r.trades.map(([ts, side, , , pr]) => ({ ts, price: pr, kind: side }));
+
   return (
     <div className="mx-auto max-w-6xl px-4 pt-6 sm:px-6 sm:pt-10">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="label text-muted">Trader receipts</p>
+          <p className="label text-muted">Trader receipts · {token.chainName}</p>
           <h1 className="num mt-1 truncate text-2xl font-bold sm:text-3xl" title={r.owner}>
             {short(r.owner)}
           </h1>
@@ -132,34 +133,35 @@ function TraderGame({ r }: { r: TraderReceipts }) {
               <Flame className="size-3.5 text-[#e8590c]" aria-hidden /> Streak {streak.current}
             </span>
           )}
-          <a href={solscanAccount(r.owner)} target="_blank" rel="noreferrer" className="btn btn-ghost h-9 min-h-0 px-3 text-sm">
-            Solscan <ArrowUpRight className="size-4" aria-hidden />
-          </a>
+          {chain && (
+            <a href={chain.account(r.owner)} target="_blank" rel="noreferrer" className="btn btn-ghost h-9 min-h-0 px-3 text-sm">
+              Explorer <ArrowUpRight className="size-4" aria-hidden />
+            </a>
+          )}
         </div>
       </div>
 
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:gap-10">
-        {/* the call, then the verdict */}
-        <section className="space-y-4 lg:sticky lg:top-24" aria-label="Your call">
+        <section className="space-y-4" aria-label="Your call">
           {call === null ? (
             <div className="card p-5 sm:p-6">
-              <p className="label text-muted">Before it prints</p>
-              <h2 className="mt-1 text-2xl font-bold leading-tight sm:text-3xl">Profit or rekt?</h2>
-              <p className="mt-2 text-ink-2">Here’s how much this wallet played. You don’t get to see how it went until you call it.</p>
-              <dl className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-                <Clue label="Tokens" value={String(r.positions.length)} />
-                <Clue label="Trades" value={String(t.trades)} />
-                <Clue label="SOL in" value={sol(t.solIn).replace(' SOL', '')} />
-                <Clue label="Since" value={day(t.firstTs).split(',')[0]!} />
-              </dl>
-              <div className="mt-4 flex flex-wrap gap-1.5">
-                {r.positions.slice(0, 8).map((p) => (
-                  <span key={p.token.mint} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 py-1 pl-1 pr-2.5 text-sm font-semibold">
-                    <TokenImage src={p.token.image} symbol={p.token.symbol} className="size-5 text-[10px]" />${p.token.symbol}
-                  </span>
-                ))}
-                {r.positions.length > 8 && <span className="px-1 py-1 text-sm text-muted">+{r.positions.length - 8}</span>}
+              <div className="flex items-center gap-3">
+                <TokenImage src={token.image} symbol={token.symbol} className="size-10 text-base" />
+                <div className="min-w-0">
+                  <p className="truncate font-bold">${token.symbol}</p>
+                  <p className="truncate text-[13px] text-muted">
+                    {token.name} · {token.chainName}
+                  </p>
+                </div>
               </div>
+              <h2 className="mt-5 text-2xl font-bold leading-tight sm:text-3xl">Profit or rekt?</h2>
+              <p className="mt-2 text-ink-2">Here’s how this wallet played ${token.symbol}. You don’t get to see how it went until you call it.</p>
+              <dl className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+                <Clue label="Buys" value={String(p.buys)} />
+                <Clue label="Sells" value={String(p.sells)} />
+                <Clue label="Put in" value={usd(p.usdIn)} />
+                <Clue label="First trade" value={`${span(now - p.firstTs)} ago`} />
+              </dl>
               <div className="mt-6 grid grid-cols-2 gap-2.5">
                 <button type="button" onClick={() => make('profit')} className="btn h-16 bg-pos text-lg text-white">
                   <ThumbsUp className="size-5" aria-hidden /> Profit
@@ -192,7 +194,8 @@ function TraderGame({ r }: { r: TraderReceipts }) {
                     </p>
                   )}
                   <p className="mt-1 text-ink-2">
-                    {won ? 'In profit' : t.pnl < 0 ? 'Down' : 'Flat'} by <span className={cx('num font-semibold', won ? 'text-pos' : t.pnl < 0 && 'text-neg')}>{sol(t.pnl, { signed: true })}</span> ({usd(t.pnl * r.solUsd, { signed: true })}).
+                    {won ? 'Up' : p.pnl < 0 ? 'Down' : 'Flat'} <span className={cx('num font-semibold', won ? 'text-pos' : p.pnl < 0 && 'text-neg')}>{usd(p.pnl, { signed: true })}</span> on ${token.symbol}, #
+                    {r.place} of {r.of} recent traders.
                     {right !== null && (
                       <>
                         {' '}
@@ -212,15 +215,44 @@ function TraderGame({ r }: { r: TraderReceipts }) {
                     <button type="button" onClick={share} className="btn btn-ghost">
                       <Link2 className="size-4" aria-hidden /> Share link
                     </button>
+                    <Link href={ROUTES.token(token.address)} className="btn btn-ghost col-span-2">
+                      <Coins className="size-4" aria-hidden /> Ape ${token.symbol} yourself
+                    </Link>
                   </div>
-                  <Link href="/#paste" className="mt-3 block text-center text-sm font-medium text-muted underline underline-offset-2 hover:text-ink">
-                    Paste another address
-                  </Link>
                 </div>
               )}
             </div>
           )}
-          {!r.complete && <p className="text-[13px] text-muted">Some history was too long to read in full, so the oldest trades may be missing.</p>}
+
+          {done && (
+            <div className="card p-4 sm:p-5">
+              <p className="label text-muted">
+                ${token.symbol} · {r.candle} candles · B buy, S sell
+              </p>
+              <PriceChart series={r.series} markers={markers.length <= 80 ? markers : []} className="mt-3" />
+              <ol className="mt-4 max-h-80 overflow-y-auto rounded-xl border border-line text-[13px]">
+                {[...r.trades].reverse().map(([ts, side, tokens, u, pr, tx]) => (
+                  <li key={tx + side + ts} className="flex items-center gap-3 border-b border-line/60 px-3 py-2 last:border-0">
+                    <span className={cx('num w-10 shrink-0 rounded px-1 py-0.5 text-center text-[11px] font-bold text-white', side === 'buy' ? 'bg-pos' : 'bg-neg')}>{side === 'buy' ? 'BUY' : 'SELL'}</span>
+                    <span className="num min-w-0 flex-1 truncate">
+                      {usd(u)} <span className="text-muted">@ {price(pr)}</span>
+                      <span className="block text-[11.5px] text-muted">
+                        {compact(tokens)} ${token.symbol} · {dateTime(ts)}
+                      </span>
+                    </span>
+                    {chain && (
+                      <a href={chain.tx(tx)} target="_blank" rel="noreferrer" className="shrink-0 text-muted hover:text-ink" aria-label="Open the transaction in the explorer">
+                        <ArrowUpRight className="size-4" />
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+          <p className="text-[13px] leading-snug text-muted">
+            Read from ${token.symbol}’s latest {r.window.trades} trades on {token.dex} ({span(r.window.to - r.window.from)} of trading). Earlier trades by this wallet are not in the feed.
+          </p>
         </section>
 
         <div ref={paperRef} className="scroll-mt-20 pb-4 pt-3">
@@ -237,19 +269,6 @@ function TraderGame({ r }: { r: TraderReceipts }) {
           )}
         </div>
       </div>
-
-      {done && (
-        <section className="mt-10" aria-labelledby="by-token">
-          <h2 id="by-token" className="text-xl font-bold tracking-tight sm:text-2xl">
-            Token by token
-          </h2>
-          <ul className="mt-4 grid gap-3 md:grid-cols-2">
-            {r.positions.map((p) => (
-              <PositionCard key={p.token.mint} p={p} solUsd={r.solUsd} />
-            ))}
-          </ul>
-        </section>
-      )}
     </div>
   );
 }
@@ -263,119 +282,49 @@ function Clue({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PositionCard({ p, solUsd }: { p: Position; solUsd: number }) {
-  const [open, setOpen] = useState(false);
-  const tone = toneOf(p.pnl);
-  const markers = p.trades.map(([ts, side, , , price]) => ({ ts, price, kind: side }));
-  return (
-    <li className="card overflow-hidden">
-      <div className="flex items-center gap-3 p-4">
-        <TokenImage src={p.token.image} symbol={p.token.symbol} className="size-10 text-base" />
-        <div className="min-w-0 flex-1">
-          <p className="truncate font-bold">${p.token.symbol}</p>
-          <p className="truncate text-[13px] text-muted">{p.token.name}</p>
-        </div>
-        <div className="text-right">
-          <p className={cx('num font-bold', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{sol(p.pnl, { signed: true })}</p>
-          <p className="num text-[13px] text-muted">{pct(p.roi, { signed: true })}</p>
-        </div>
-      </div>
-      <div className="px-4">
-        <PriceChart series={p.series} markers={markers.length <= 60 ? markers : []} className="rounded-lg" />
-      </div>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 p-4 text-sm sm:grid-cols-3">
-        <Kv k="SOL in" v={sol(p.solIn)} />
-        <Kv k="SOL out" v={sol(p.solOut)} />
-        <Kv k="Bag now" v={sol(p.holdValue)} />
-        <Kv k="Rewards" v={sol(p.rewards)} />
-        <Kv k="Trades" v={`${p.buys}B / ${p.sells}S`} />
-        <Kv k="Left on table" v={p.missedSol > 0 ? sol(p.missedSol) : '—'} tone={p.missedSol > 0 ? 'neg' : null} />
-      </dl>
-      <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
-        <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="btn btn-ghost h-9 min-h-0 px-3 text-sm">
-          Trades <ChevronDown className={cx('size-4 transition-transform', open && 'rotate-180')} aria-hidden />
-        </button>
-        <Link href={ROUTES.token(p.token.mint)} className="btn btn-ghost h-9 min-h-0 px-3 text-sm">
-          Ape this token
-        </Link>
-        <span className="num ml-auto text-[12px] text-muted">{usd(p.pnl * solUsd, { signed: true })}</span>
-      </div>
-      {open && (
-        <ol className="max-h-72 overflow-y-auto border-t border-line text-[13px]">
-          {[...p.trades].reverse().map(([ts, side, tokens, s, price, sig]) => (
-            <li key={sig} className="flex items-center gap-3 border-b border-line/60 px-4 py-2 last:border-0">
-              <span className={cx('num w-9 shrink-0 rounded px-1 py-0.5 text-center text-[11px] font-bold text-white', side === 'buy' ? 'bg-pos' : 'bg-neg')}>{side === 'buy' ? 'BUY' : 'SELL'}</span>
-              <span className="num min-w-0 flex-1 truncate">
-                {sol(s)} <span className="text-muted">@ {tinyPrice(price)}</span>
-                <span className="block text-[11.5px] text-muted">
-                  {Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 2 }).format(tokens)} ${p.token.symbol} · {dateTime(ts)}
-                </span>
-              </span>
-              <a href={solscanTx(sig)} target="_blank" rel="noreferrer" className="shrink-0 text-muted hover:text-ink" aria-label="Open the transaction on Solscan">
-                <ArrowUpRight className="size-4" />
-              </a>
-            </li>
-          ))}
-        </ol>
-      )}
-    </li>
-  );
-}
-
-function Kv({ k, v, tone }: { k: string; v: string; tone?: 'pos' | 'neg' | null }) {
-  return (
-    <div className="min-w-0">
-      <dt className="label text-muted">{k}</dt>
-      <dd className={cx('num truncate font-semibold', tone === 'neg' && 'text-neg')}>{v}</dd>
-    </div>
-  );
-}
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token';
 
 /** The trader's receipt, line by line. */
 function traderDoc(r: TraderReceipts): ReceiptDoc {
-  const t = r.totals;
-  const rank = RANKS[rankOf(t.roi)];
-  const decided = t.wins + t.losses;
-  const items: Line[] = r.positions.slice(0, MAX_ITEMS).map((p) => ({
+  const p = r.position;
+  const { token } = r;
+  const rank = RANKS[rankOf(p.roi)];
+  const items: Line[] = r.trades.slice(-MAX_ITEMS).map(([ts, side, tokens, u, pr]) => ({
     t: 'item',
-    name: `$${p.token.symbol}`,
-    sub: `in ${num3(p.solIn)} · out ${num3(p.solOut)} · bag ${num3(p.holdValue)}${p.rewards > 0 ? ` · rwd ${num3(p.rewards)}` : ''}`,
-    right: sol(p.pnl, { signed: true }).replace(' SOL', ''),
-    tone: toneOf(p.pnl),
+    name: `${side === 'buy' ? 'BUY ' : 'SELL'} ${compact(tokens)}`,
+    sub: `@ ${price(pr)} · ${day(ts)}`,
+    right: side === 'buy' ? `-${usd(u)}` : `+${usd(u)}`,
+    tone: side === 'buy' ? null : 'pos',
   }));
-  const rest = r.positions.slice(MAX_ITEMS);
-  if (rest.length) {
-    const pnl = rest.reduce((a, p) => a + p.pnl, 0);
-    items.push({ t: 'row', left: `+${rest.length} more tokens`, right: sol(pnl, { signed: true }).replace(' SOL', ''), tone: toneOf(pnl), muted: true });
-  }
+  const earlier = r.trades.length - MAX_ITEMS;
   return {
     lines: [
       { t: 'title', text: 'RECEIPTS' },
-      { t: 'center', text: 'TRADER RECEIPT · BORDRLESS', muted: true },
+      { t: 'center', text: `TRADER RECEIPT · ${token.chainName.toUpperCase()}`, muted: true },
       { t: 'center', text: dateTime(Date.now() / 1000), muted: true },
       { t: 'dash' },
       { t: 'row', left: 'WALLET', right: short(r.owner) },
-      { t: 'row', left: 'FIRST TRADE', right: day(t.firstTs) },
-      { t: 'row', left: 'TRADES', right: `${t.trades} on ${r.positions.length} token${r.positions.length === 1 ? '' : 's'}` },
+      { t: 'row', left: 'TOKEN', right: `$${token.symbol}` },
+      { t: 'row', left: 'TRADES', right: `${p.buys} buys · ${p.sells} sells` },
       { t: 'dash' },
-      { t: 'row', left: 'ITEM', right: 'P&L SOL', muted: true },
+      ...(earlier > 0 ? [{ t: 'row', left: `${earlier} earlier trades`, right: '…', muted: true } as Line] : []),
       ...items,
       { t: 'dash' },
-      { t: 'row', left: 'SOL IN', right: sol(t.solIn) },
-      { t: 'row', left: 'SOL OUT', right: sol(t.solOut) },
-      { t: 'row', left: 'BAG AT TODAY’S PRICE', right: sol(t.holdValue) },
-      ...(t.rewards > 0 ? [{ t: 'row', left: 'HOLDER REWARDS', right: sol(t.rewards, { signed: true }), tone: 'pos' } as Line] : []),
-      { t: 'row', left: 'WIN RATE', right: decided ? `${t.wins}/${decided} · ${pct(t.wins / decided)}` : '—' },
-      ...(t.missedSol > 0 ? [{ t: 'row', left: 'SOLD BEFORE THE TOP', right: `-${sol(t.missedSol)}`, tone: 'neg' } as Line] : []),
+      { t: 'row', left: 'PUT IN', right: usd(p.usdIn) },
+      { t: 'row', left: 'TOOK OUT', right: usd(p.usdOut) },
+      { t: 'row', left: 'BAG AT TODAY’S PRICE', right: usd(p.openValue) },
+      { t: 'row', left: 'REALIZED', right: usd(p.realized, { signed: true }), tone: toneOf(p.realized) },
+      { t: 'row', left: 'UNREALIZED', right: usd(p.unrealized, { signed: true }), tone: toneOf(p.unrealized) },
+      ...(p.missedUsd > 0.005 ? [{ t: 'row', left: 'SOLD BEFORE THE TOP', right: `-${usd(p.missedUsd)}`, tone: 'neg' } as Line] : []),
+      ...(p.unknownSold > 0 ? [{ t: 'row', left: 'SOLD, BOUGHT EARLIER', right: `${compact(p.unknownSold)} (no cost)`, muted: true } as Line] : []),
       { t: 'dash' },
-      { t: 'total', left: 'TOTAL P&L', right: sol(t.pnl, { signed: true }), sub: `${usd(t.pnl * r.solUsd, { signed: true })} · ${pct(t.roi, { signed: true })}`, tone: toneOf(t.pnl) },
+      { t: 'total', left: 'P&L', right: usd(p.pnl, { signed: true }), sub: pct(p.roi, { signed: true }), tone: toneOf(p.pnl) },
+      { t: 'row', left: 'VS RECENT TRADERS', right: `#${r.place} of ${r.of}` },
       { t: 'rank', name: rank.name, line: rank.line },
-      { t: 'barcode', seed: r.owner },
+      { t: 'barcode', seed: `${r.owner}:${token.address}` },
       { t: 'center', text: SITE_HOST, muted: true },
       { t: 'center', text: 'a game · not financial advice', muted: true },
     ],
-    stamp: stampOf(t.pnl),
+    stamp: stampOf(p.pnl),
   };
 }
-
-const num3 = (n: number) => sol(n).replace(' SOL', '');

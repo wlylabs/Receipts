@@ -1,93 +1,95 @@
-/** What bordrless.app's API sends, only the fields Receipts reads. */
-export interface RawLaunch {
-  mint: string;
-  name: string;
-  symbol: string;
-  image: string | null;
-  status: 'curve' | 'graduated';
-  createdAt: number;
-  priceQuote: number | null;
-  priceUsd: number | null;
-  mcapUsd: number | null;
-  holders: number;
-  buyFeeBps: number;
-  sellFeeBps: number;
-  decimals?: number;
-  quote?: { symbol: string; decimals: number };
+/** A DexScreener pair, only the fields Receipts reads. */
+export interface DsPair {
+  chainId: string;
+  dexId: string;
+  url: string;
+  pairAddress: string;
+  baseToken: { address: string; name: string; symbol: string };
+  quoteToken: { address: string; name: string; symbol: string };
+  priceUsd?: string;
+  priceChange?: { h24?: number };
+  volume?: { h24?: number };
+  liquidity?: { usd?: number };
+  fdv?: number;
+  marketCap?: number;
+  pairCreatedAt?: number;
+  info?: { imageUrl?: string };
 }
 
-export interface RawTrade {
-  signature: string;
-  slot: number;
-  ts: number;
-  trader: string;
-  side: 'buy' | 'sell';
-  baseAmount: string;
-  quoteAmount: string;
-  priceQuote: number;
-  priceUsd: number;
+/** A GeckoTerminal trade, only the fields Receipts reads. */
+export interface GtTrade {
+  attributes: {
+    tx_hash: string;
+    tx_from_address: string;
+    block_timestamp: string;
+    from_token_address: string;
+    to_token_address: string;
+    from_token_amount: string;
+    to_token_amount: string;
+    volume_in_usd: string;
+  };
 }
 
-export interface RawPortfolio {
-  owner: string;
-  lamports: string;
-  entries: { mint: string; decimals: number; amount: string; kind: string; claimableRewards: string | null }[];
-  created: { mint: string }[];
-}
-
-export interface RawRewards {
-  owner: string;
-  positions: { mint: string; decimals: number; balance: string; claimable: string; claimed: string }[];
-}
-
-/** A trade in plain numbers: tokens in whole tokens, SOL in SOL. */
+/** A trade in plain numbers: tokens in whole tokens, value in USD. */
 export interface Trade {
-  sig: string;
+  tx: string;
   ts: number;
   trader: string;
   side: 'buy' | 'sell';
   tokens: number;
-  sol: number;
-  priceSol: number;
+  usd: number;
+  priceUsd: number;
 }
 
 export interface TokenInfo {
-  mint: string;
+  /** DexScreener's chain id, e.g. "solana", "ethereum", "base". */
+  chain: string;
+  chainName: string;
+  address: string;
+  /** The pool the chart and trades come from: the token's deepest pair. */
+  pair: string;
+  dex: string;
+  quoteSymbol: string;
   name: string;
   symbol: string;
   image: string | null;
-  status: 'curve' | 'graduated';
-  createdAt: number;
-  priceSol: number;
   priceUsd: number;
   mcapUsd: number | null;
-  holders: number;
-  buyFeeBps: number;
-  sellFeeBps: number;
+  liquidityUsd: number | null;
+  volume24hUsd: number | null;
+  change24h: number | null;
+  /** Unix seconds; null when DexScreener does not know. */
+  createdAt: number | null;
+  url: string;
 }
 
-/** One trader's whole history on one token, in SOL. */
+/**
+ * One wallet's trades on one token inside the window the trade feed covers. Tokens it sold that
+ * it did not buy inside the window cost an unknown amount, so they are counted apart and left
+ * out of the P&L.
+ */
 export interface PositionCalc {
   buys: number;
   sells: number;
-  solIn: number;
-  solOut: number;
+  usdIn: number;
+  usdOut: number;
   tokensIn: number;
   tokensOut: number;
-  /** Tokens still held. */
-  held: number;
-  /** What selling the held tokens now would return, sell fee taken. */
-  holdValue: number;
-  /** SOL from sells above what those tokens cost on average. */
+  /** Tokens bought in the window and not sold since. */
+  open: number;
+  /** What the open tokens are worth now. */
+  openValue: number;
+  /** Profit on tokens both bought and sold in the window. */
   realized: number;
-  /** Holder rewards paid to this wallet, claimed or not. */
-  rewards: number;
-  /** Everything out plus the bag, less everything in. */
+  /** Profit on the open tokens at today's price. */
+  unrealized: number;
   pnl: number;
-  /** pnl over SOL put in; null with nothing put in. */
+  /** pnl over USD put in; null with no buys seen. */
   roi: number | null;
-  /** What the sold tokens would have fetched at the highest price after each sell. */
-  missedSol: number;
+  /** Tokens sold that were bought before the window. */
+  unknownSold: number;
+  /** What the tokens sold would have fetched at the highest price after each sell. */
+  missedUsd: number;
   firstTs: number;
   lastTs: number;
 }
@@ -95,82 +97,54 @@ export interface PositionCalc {
 export interface BoardRow {
   trader: string;
   trades: number;
-  solIn: number;
-  solOut: number;
-  holdValue: number;
+  usdIn: number;
+  usdOut: number;
   pnl: number;
   roi: number | null;
 }
 
-export interface TokenStats {
+export interface Window {
   trades: number;
   traders: number;
   buys: number;
   sells: number;
-  volumeSol: number;
-  firstTs: number;
-  lastTs: number;
+  volumeUsd: number;
+  from: number;
+  to: number;
 }
 
 /** GET /api/token/[ca] */
 export interface TokenReceipts {
   kind: 'token';
   token: TokenInfo;
-  solUsd: number;
-  /** False when the history was too long to read in full; the oldest trades are then missing. */
-  complete: boolean;
-  /** The price since launch as [unix seconds, SOL per token], oldest first. */
+  /** Price since the pair opened as [unix seconds, USD per token], oldest first. */
   series: [number, number][];
-  ath: { ts: number; priceSol: number };
-  stats: TokenStats;
-  /** Every trader on this token, best first. */
+  /** Candle size of the series, e.g. "5m", "1h", "1d". */
+  candle: string;
+  ath: { ts: number; priceUsd: number };
+  /** The latest trades the feed has, at most a few hundred within a day. */
+  window: Window;
+  /** Every wallet in that window, best first. */
   board: BoardRow[];
 }
 
-export interface Position extends PositionCalc {
-  token: TokenInfo;
-  /** This wallet's trades on the token, oldest first, as [ts, side, tokens, sol, priceSol, signature]. */
-  trades: [number, 'buy' | 'sell', number, number, number, string][];
-  athSol: number;
-  /** The token's price since launch, thinned, as [unix seconds, SOL per token]. */
-  series: [number, number][];
-  complete: boolean;
-}
-
-export interface TraderTotals {
-  solIn: number;
-  solOut: number;
-  holdValue: number;
-  rewards: number;
-  pnl: number;
-  roi: number | null;
-  trades: number;
-  wins: number;
-  losses: number;
-  missedSol: number;
-  firstTs: number;
-  lastTs: number;
-}
-
-/** GET /api/trader/[address] */
+/** GET /api/trader/[address]?ca= */
 export interface TraderReceipts {
   kind: 'trader';
   owner: string;
-  solUsd: number;
-  /** SOL in the wallet right now. */
-  walletSol: number;
-  positions: Position[];
-  totals: TraderTotals;
-  complete: boolean;
-}
-
-/** GET /api/trader/[address] when the address turned out to be a token. */
-export interface IsToken {
-  kind: 'is-token';
-  mint: string;
+  token: TokenInfo;
+  position: PositionCalc;
+  /** The wallet's trades, oldest first, as [ts, side, tokens, usd, priceUsd, tx]. */
+  trades: [number, 'buy' | 'sell', number, number, number, string][];
+  series: [number, number][];
+  candle: string;
+  window: Window;
+  /** Where this wallet ranks among the window's traders, 1 is the top. */
+  place: number;
+  of: number;
 }
 
 export interface ApiError {
   error: string;
-  code: 'invalid' | 'not-found' | 'no-trades' | 'upstream';
+  code: 'invalid' | 'not-found' | 'no-trades' | 'unsupported' | 'upstream';
 }

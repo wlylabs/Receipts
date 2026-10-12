@@ -1,9 +1,9 @@
 'use client';
 
-import { useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, ClipboardPaste, Coins, Dices, Loader2, Wallet, X } from 'lucide-react';
-import { ADDRESS_RE, cleanAddress } from '../lib/receipts';
+import { cleanAddress, isAddress, isWallet } from '../lib/receipts';
 import { readClipboard } from '../lib/clipboard';
 import { ROUTES } from '../lib/site';
 import { toast } from '../lib/toast';
@@ -11,73 +11,78 @@ import { cx } from '../lib/cx';
 
 export type Mode = 'trader' | 'token';
 
-const COPY: Record<Mode, { tab: string; label: string; placeholder: string; go: string; hint: string }> = {
+const COPY: Record<Mode, { tab: string; go: string; hint: string }> = {
   trader: {
     tab: 'Trader address',
-    label: 'Paste a trader’s wallet address',
-    placeholder: 'Wallet address, e.g. 2eZJ…xQr',
     go: 'Pull receipts',
-    hint: 'Every Bordrless trade the wallet made, priced to the lamport.',
+    hint: 'Their buys and sells in the token’s latest trades (about the last day), priced in USD.',
   },
   token: {
     tab: 'Token CA',
-    label: 'Paste a token contract address (CA)',
-    placeholder: 'Contract address, e.g. 5xpz…spwi',
     go: 'Ape in',
-    hint: 'Pick an entry and an exit on the real chart and see where you’d rank.',
+    hint: 'Any token on DexScreener: Solana, Ethereum, Base, BNB, Arbitrum, Polygon, Avalanche, Optimism.',
   },
 };
 
-export function AddressForm({ initial = 'trader', autoFocus = false }: { initial?: Mode; autoFocus?: boolean }) {
+export function AddressForm({ initial = 'token', wallet: initialWallet = '', ca: initialCa = '' }: { initial?: Mode; wallet?: string; ca?: string }) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>(initial);
-  const [value, setValue] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [wallet, setWallet] = useState(initialWallet);
+  const [ca, setCa] = useState(initialCa);
+  const [error, setError] = useState<{ field: 'wallet' | 'ca'; text: string } | null>(null);
   const [busy, setBusy] = useState<'go' | 'random' | null>(null);
-  const input = useRef<HTMLInputElement>(null);
+  const walletRef = useRef<HTMLInputElement>(null);
+  const caRef = useRef<HTMLInputElement>(null);
   const id = useId();
   const c = COPY[mode];
 
-  const go = (raw: string, m: Mode = mode) => {
-    const a = cleanAddress(raw);
-    if (!a) {
-      setError('Paste an address first.');
-      input.current?.focus();
+  const go = (w = wallet, t = ca, m = mode) => {
+    const token = cleanAddress(t);
+    const owner = cleanAddress(w);
+    if (m === 'trader' && !isWallet(owner)) {
+      setError({ field: 'wallet', text: owner ? 'That doesn’t look like a wallet address (Solana or 0x…).' : 'Paste the trader’s wallet first.' });
+      walletRef.current?.focus();
       return;
     }
-    if (!ADDRESS_RE.test(a)) {
-      setError('That doesn’t look like a Solana address (32–44 base58 characters).');
-      input.current?.focus();
+    if (!isAddress(token)) {
+      setError({ field: 'ca', text: token ? 'That doesn’t look like a token address (Solana or 0x…).' : m === 'trader' ? 'Paste the token they traded too.' : 'Paste a token CA first.' });
+      caRef.current?.focus();
       return;
     }
     setError(null);
     setBusy('go');
-    router.push(m === 'trader' ? ROUTES.trader(a) : ROUTES.token(a));
+    router.push(m === 'trader' ? ROUTES.trader(owner, token) : ROUTES.token(token));
   };
 
-  // a bordrless.app token link is a CA whichever tab is open
-  const modeFor = (raw: string): Mode => (/\/token\//.test(raw) ? 'token' : /\/(portfolio|account|address)\//.test(raw) ? 'trader' : mode);
+  const fill = (field: 'wallet' | 'ca', text: string) => {
+    const v = cleanAddress(text);
+    if (field === 'wallet') setWallet(v);
+    else setCa(v);
+    if (error?.field === field) setError(null);
+    // a full form goes on its own
+    if (mode === 'token' && field === 'ca' && isAddress(v)) go(wallet, v, 'token');
+    if (mode === 'trader' && field === 'wallet' && isWallet(v) && isAddress(cleanAddress(ca))) go(v, ca, 'trader');
+    if (mode === 'trader' && field === 'ca' && isAddress(v) && isWallet(cleanAddress(wallet))) go(wallet, v, 'trader');
+    if (mode === 'trader' && field === 'wallet' && isWallet(v) && !ca) caRef.current?.focus();
+  };
 
-  const paste = async () => {
+  const paste = async (field: 'wallet' | 'ca') => {
     const text = await readClipboard();
     if (text === null) {
-      input.current?.focus();
+      (field === 'wallet' ? walletRef : caRef).current?.focus();
       toast('Your browser kept the clipboard to itself. Long-press the box to paste.');
       return;
     }
-    const m = modeFor(text);
-    setMode(m);
-    setValue(cleanAddress(text));
-    go(text, m);
+    fill(field, text);
   };
 
   const random = async () => {
     setBusy('random');
     try {
       const res = await fetch('/api/random', { cache: 'no-store' });
-      const body = (await res.json()) as { address?: string; error?: string };
-      if (!res.ok || !body.address) throw new Error(body.error ?? 'random');
-      router.push(ROUTES.trader(body.address));
+      const body = (await res.json()) as { address?: string; ca?: string; error?: string };
+      if (!res.ok || !body.address || !body.ca) throw new Error(body.error ?? 'random');
+      router.push(ROUTES.trader(body.address, body.ca));
     } catch {
       setBusy(null);
       toast('Couldn’t find a random trader right now. Try again.');
@@ -86,13 +91,13 @@ export function AddressForm({ initial = 'trader', autoFocus = false }: { initial
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    go(value);
+    go();
   };
 
   return (
     <form onSubmit={submit} className="card overflow-hidden" noValidate>
       <div role="tablist" aria-label="What to paste" className="grid grid-cols-2 border-b border-line bg-surface-2 p-1.5">
-        {(['trader', 'token'] as Mode[]).map((m) => {
+        {(['token', 'trader'] as Mode[]).map((m) => {
           const on = m === mode;
           const Icon = m === 'trader' ? Wallet : Coins;
           return (
@@ -105,7 +110,6 @@ export function AddressForm({ initial = 'trader', autoFocus = false }: { initial
               onClick={() => {
                 setMode(m);
                 setError(null);
-                input.current?.focus();
               }}
               className={cx(
                 'flex min-h-11 items-center justify-center gap-2 rounded-[12px] px-2 text-sm font-semibold transition-colors',
@@ -119,59 +123,32 @@ export function AddressForm({ initial = 'trader', autoFocus = false }: { initial
         })}
       </div>
 
-      <div id={`${id}-panel`} role="tabpanel" className="space-y-3 p-4 sm:p-5">
-        <label htmlFor={`${id}-input`} className="block text-[15px] font-semibold">
-          {c.label}
-        </label>
-        <div
-          className={cx(
-            'flex items-center gap-1 rounded-[14px] border bg-surface-2 pl-3.5 pr-1.5 transition-colors focus-within:border-ink',
-            error ? 'border-neg' : 'border-line',
-          )}
-        >
-          <input
-            ref={input}
-            id={`${id}-input`}
-            value={value}
-            onChange={(e) => {
-              setValue(e.target.value);
-              if (error) setError(null);
-            }}
-            onPaste={(e) => {
-              const text = e.clipboardData.getData('text');
-              if (!text) return;
-              e.preventDefault();
-              const m = modeFor(text);
-              setMode(m);
-              setValue(cleanAddress(text));
-              if (ADDRESS_RE.test(cleanAddress(text))) go(text, m);
-            }}
-            placeholder={c.placeholder}
-            autoFocus={autoFocus}
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-            inputMode="text"
-            enterKeyHint="go"
-            aria-invalid={!!error}
-            aria-describedby={`${id}-hint`}
-            className="num h-14 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:font-sans placeholder:text-muted"
+      <div id={`${id}-panel`} role="tabpanel" className="space-y-4 p-4 sm:p-5">
+        {mode === 'trader' && (
+          <Field
+            id={`${id}-wallet`}
+            label="Trader’s wallet address"
+            placeholder="Wallet, e.g. 7xKX…AsU or 0x…"
+            value={wallet}
+            onChange={setWallet}
+            onPaste={(t) => fill('wallet', t)}
+            onPasteClick={() => paste('wallet')}
+            error={error?.field === 'wallet' ? error.text : null}
+            inputRef={walletRef}
           />
-          {value ? (
-            <button type="button" onClick={() => setValue('')} className="grid size-10 shrink-0 place-items-center rounded-full text-muted hover:text-ink" aria-label="Clear">
-              <X className="size-4" />
-            </button>
-          ) : (
-            <button type="button" onClick={paste} className="btn btn-ink h-11 min-h-0 shrink-0 px-3.5 text-sm">
-              <ClipboardPaste className="size-4" aria-hidden />
-              Paste
-            </button>
-          )}
-        </div>
-        <p id={`${id}-hint`} className={cx('text-[13px] leading-snug', error ? 'text-neg' : 'text-muted')} role={error ? 'alert' : undefined}>
-          {error ?? c.hint}
-        </p>
+        )}
+        <Field
+          id={`${id}-ca`}
+          label={mode === 'trader' ? 'Token they traded (CA)' : 'Token contract address (CA)'}
+          placeholder="CA or a dexscreener.com link"
+          value={ca}
+          onChange={setCa}
+          onPaste={(t) => fill('ca', t)}
+          onPasteClick={() => paste('ca')}
+          error={error?.field === 'ca' ? error.text : null}
+          inputRef={caRef}
+        />
+        <p className="text-[13px] leading-snug text-muted">{c.hint}</p>
 
         <div className={cx('grid gap-2', mode === 'trader' ? 'grid-cols-[1fr_auto]' : 'grid-cols-1')}>
           <button type="submit" disabled={busy !== null} className="btn btn-hi h-13 text-base">
@@ -180,7 +157,7 @@ export function AddressForm({ initial = 'trader', autoFocus = false }: { initial
             {busy !== 'go' && <ArrowRight className="size-5" aria-hidden />}
           </button>
           {mode === 'trader' && (
-            <button type="button" onClick={random} disabled={busy !== null} className="btn btn-ghost h-13" title="A random real trader from a busy token">
+            <button type="button" onClick={random} disabled={busy !== null} className="btn btn-ghost h-13" title="A random real trader from a trending token">
               {busy === 'random' ? <Loader2 className="size-5 animate-spin" aria-hidden /> : <Dices className="size-5" aria-hidden />}
               <span className="hidden sm:inline">Random</span>
               <span className="sr-only sm:hidden">Random trader</span>
@@ -189,5 +166,73 @@ export function AddressForm({ initial = 'trader', autoFocus = false }: { initial
         </div>
       </div>
     </form>
+  );
+}
+
+function Field({
+  id,
+  label,
+  placeholder,
+  value,
+  onChange,
+  onPaste,
+  onPasteClick,
+  error,
+  inputRef,
+}: {
+  id: string;
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (v: string) => void;
+  onPaste: (text: string) => void;
+  onPasteClick: () => void;
+  error: string | null;
+  inputRef: RefObject<HTMLInputElement | null>;
+}) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-[15px] font-semibold">
+        {label}
+      </label>
+      <div className={cx('mt-2 flex items-center gap-1 rounded-[14px] border bg-surface-2 pl-3.5 pr-1.5 transition-colors focus-within:border-ink', error ? 'border-neg' : 'border-line')}>
+        <input
+          ref={inputRef}
+          id={id}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData('text');
+            if (!text) return;
+            e.preventDefault();
+            onPaste(text);
+          }}
+          placeholder={placeholder}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          enterKeyHint="go"
+          aria-invalid={!!error}
+          aria-describedby={error ? `${id}-err` : undefined}
+          className="num h-13 min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:font-sans placeholder:text-muted"
+        />
+        {value ? (
+          <button type="button" onClick={() => onChange('')} className="grid size-10 shrink-0 place-items-center rounded-full text-muted hover:text-ink" aria-label={`Clear ${label}`}>
+            <X className="size-4" />
+          </button>
+        ) : (
+          <button type="button" onClick={onPasteClick} className="btn btn-ink h-10 min-h-0 shrink-0 px-3 text-sm">
+            <ClipboardPaste className="size-4" aria-hidden />
+            Paste
+          </button>
+        )}
+      </div>
+      {error && (
+        <p id={`${id}-err`} className="mt-1.5 text-[13px] text-neg" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

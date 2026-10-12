@@ -11,15 +11,6 @@ function nf(opts: Intl.NumberFormatOptions): Intl.NumberFormat {
   return f;
 }
 
-/** SOL with sensible digits: 12.4, 0.532, 0.00041. */
-export function sol(n: number, opts: { signed?: boolean } = {}): string {
-  if (!Number.isFinite(n)) return '-';
-  const abs = Math.abs(n);
-  const digits = abs >= 100 ? 1 : abs >= 1 ? 3 : abs >= 0.001 ? 4 : 6;
-  const s = nf({ maximumFractionDigits: digits, minimumFractionDigits: abs >= 100 ? 1 : 2, signDisplay: opts.signed ? 'exceptZero' : 'auto' }).format(n);
-  return `${s} SOL`;
-}
-
 export function usd(n: number | null | undefined, opts: { signed?: boolean } = {}): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return '-';
   const abs = Math.abs(n);
@@ -28,8 +19,8 @@ export function usd(n: number | null | undefined, opts: { signed?: boolean } = {
     currency: 'USD',
     currencyDisplay: 'narrowSymbol',
     notation: abs >= 100_000 ? 'compact' : 'standard',
-    minimumFractionDigits: 0,
-    maximumFractionDigits: abs >= 100_000 ? 2 : abs >= 1 ? 2 : 4,
+    minimumFractionDigits: abs >= 1000 ? 0 : 2,
+    maximumFractionDigits: abs >= 100_000 ? 2 : abs >= 1000 ? 0 : abs >= 1 ? 2 : 4,
     signDisplay: opts.signed ? 'exceptZero' : 'auto',
   }).format(n);
 }
@@ -43,6 +34,11 @@ export function pct(n: number | null | undefined, opts: { signed?: boolean } = {
   if (n === null || n === undefined || !Number.isFinite(n)) return '-';
   const abs = Math.abs(n);
   return nf({ style: 'percent', maximumFractionDigits: abs >= 10 ? 0 : 1, signDisplay: opts.signed ? 'exceptZero' : 'auto' }).format(n);
+}
+
+/** A token price in dollars, tiny ones with a zero count. */
+export function price(n: number): string {
+  return Number.isFinite(n) && n > 0 ? `$${tinyPrice(n)}` : '-';
 }
 
 /** Tiny memecoin prices: 0.0000412 -> "0.0₄412". */

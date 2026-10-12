@@ -5,7 +5,6 @@ import { Coins, Flame, Target, Wallet } from 'lucide-react';
 import { useStored } from '../hooks/useStored';
 import { KEYS, NO_STREAK, type Recent, type Streak } from '../lib/game';
 import { ROUTES } from '../lib/site';
-import { short } from '../lib/format';
 
 /** This browser's streak and the last few receipts pulled. */
 export function HomeStats() {
@@ -27,9 +26,9 @@ export function HomeStats() {
           <ul className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1">
             {recent.map((r) => (
               <li key={`${r.kind}:${r.address}`} className="shrink-0">
-                <Link href={r.kind === 'trader' ? ROUTES.trader(r.address) : ROUTES.token(r.address)} className="btn btn-ghost h-10 min-h-0 px-3 text-sm">
+                <Link href={r.kind === 'trader' ? ROUTES.trader(r.address, r.ca ?? '') : ROUTES.token(r.address)} className="btn btn-ghost h-10 min-h-0 px-3 text-sm">
                   {r.kind === 'trader' ? <Wallet className="size-4" aria-hidden /> : <Coins className="size-4" aria-hidden />}
-                  <span className="num">{r.kind === 'token' ? r.label : short(r.address)}</span>
+                  <span className="num">{r.label}</span>
                 </Link>
               </li>
             ))}

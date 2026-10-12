@@ -1,81 +1,83 @@
 import { describe, expect, it } from 'vitest';
-import { cleanAddress, leaderboard, peaksAfter, placement, position, priceSeries, rankOf, simulate, toTrade } from './receipts';
-import type { Trade } from './types';
+import { cleanAddress, isAddress, leaderboard, peakAfter, placement, position, rankOf, sameAddress, simulate, toSeries, toTrades } from './receipts';
+import type { GtTrade, Trade } from './types';
 
-const W = '2eZJN9uAvrsYjcx45xph2dZAyAsX6oLDpgVzsNNSKxQr';
+const SOL = '2eZJN9uAvrsYjcx45xph2dZAyAsX6oLDpgVzsNNSKxQr';
+const EVM = '0x4200000000000000000000000000000000000006';
 let n = 0;
-const tr = (side: 'buy' | 'sell', tokens: number, sol: number, ts: number, trader = W): Trade => ({
-  sig: `s${n++}`,
-  ts,
-  trader,
-  side,
-  tokens,
-  sol,
-  priceSol: sol / tokens,
-});
+const tr = (side: 'buy' | 'sell', tokens: number, usd: number, ts: number, trader = SOL): Trade => ({ tx: `t${n++}`, ts, trader, side, tokens, usd, priceUsd: usd / tokens });
 
-describe('cleanAddress', () => {
+describe('addresses', () => {
   it('pulls the address out of a pasted link', () => {
-    expect(cleanAddress(`  https://bordrless.app/token/${W}?x=1 `)).toBe(W);
-    expect(cleanAddress('nope')).toBe('nope');
+    expect(cleanAddress(`https://dexscreener.com/solana/${SOL}?ref=x`)).toBe(SOL);
+    expect(cleanAddress(`https://dexscreener.com/base/${EVM.toUpperCase().replace('0X', '0x')}`)).toBe(EVM.toUpperCase().replace('0X', '0x'));
+    expect(isAddress(EVM)).toBe(true);
+    expect(isAddress('nope')).toBe(false);
+  });
+  it('compares EVM addresses without case', () => {
+    expect(sameAddress(EVM, EVM.toUpperCase().replace('0X', '0x'))).toBe(true);
+    expect(sameAddress(SOL, SOL.toLowerCase())).toBe(false);
   });
 });
 
-describe('toTrade', () => {
-  it('scales lamports and base units', () => {
-    const t = toTrade({ signature: 'a', slot: 1, ts: 2, trader: W, side: 'buy', baseAmount: '5000000', quoteAmount: '250000000', priceQuote: 0.05, priceUsd: 5 });
-    expect(t.tokens).toBe(5);
-    expect(t.sol).toBe(0.25);
+describe('toTrades', () => {
+  const T = 'TokenTokenTokenTokenTokenTokenTokenTo';
+  const raw = (from: string, to: string, fromAmt: string, toAmt: string, usd: string, at: string): GtTrade => ({
+    attributes: { tx_hash: at, tx_from_address: SOL, block_timestamp: at, from_token_address: from, to_token_address: to, from_token_amount: fromAmt, to_token_amount: toAmt, volume_in_usd: usd },
+  });
+  it('reads buys and sells of the token by which side it is on, oldest first', () => {
+    const t = toTrades(
+      [raw(T, 'So1', '500', '1', '150', '2026-10-12T10:00:00Z'), raw('So1', T, '1', '1000', '150', '2026-10-12T09:00:00Z'), raw('A', 'B', '1', '1', '1', '2026-10-12T08:00:00Z')],
+      T,
+    );
+    expect(t.map((x) => x.side)).toEqual(['buy', 'sell']);
+    expect(t[0]!.tokens).toBe(1000);
+    expect(t[1]!.priceUsd).toBeCloseTo(0.3);
+  });
+});
+
+describe('toSeries', () => {
+  it('orders candles and keeps the top', () => {
+    const { series, ath } = toSeries([
+      [300, 2, 2.5, 1.9, 2.2, 10],
+      [200, 1, 9, 1, 2, 10],
+      [100, 1, 1.2, 0.9, 1, 10],
+    ]);
+    expect(series.map((p) => p[0])).toEqual([100, 200, 300]);
+    expect(ath).toEqual({ ts: 200, priceUsd: 9 });
+    expect(series[1]).toEqual([200, 9]);
   });
 });
 
 describe('position', () => {
-  it('counts sells, the bag left and what it is worth', () => {
-    const trades = [tr('buy', 1000, 1, 1), tr('sell', 500, 2, 2)];
-    const p = position(trades, { priceSol: 0.004, sellFeeBps: 0 });
-    expect(p.solIn).toBe(1);
-    expect(p.solOut).toBe(2);
-    expect(p.held).toBe(500);
-    expect(p.holdValue).toBeCloseTo(2);
-    expect(p.pnl).toBeCloseTo(3);
-    expect(p.roi).toBeCloseTo(3);
-    expect(p.realized).toBeCloseTo(1.5);
+  it('splits realized and open profit', () => {
+    const p = position([tr('buy', 1000, 100, 1), tr('sell', 500, 150, 2)], 0.2);
+    expect(p.realized).toBeCloseTo(100);
+    expect(p.open).toBe(500);
+    expect(p.unrealized).toBeCloseTo(50);
+    expect(p.pnl).toBeCloseTo(150);
+    expect(p.roi).toBeCloseTo(1.5);
+    expect(p.unknownSold).toBe(0);
   });
-
-  it('caps the bag at what the trades explain and adds rewards', () => {
-    const p = position([tr('buy', 100, 1, 1)], { priceSol: 0.01, sellFeeBps: 1000, balance: 5000, rewards: 0.5 });
-    expect(p.held).toBe(100);
-    expect(p.holdValue).toBeCloseTo(0.9);
-    expect(p.pnl).toBeCloseTo(0.4);
+  it('leaves tokens bought before the window out of the P&L', () => {
+    const p = position([tr('buy', 100, 10, 1), tr('sell', 300, 60, 2)], 1);
+    expect(p.unknownSold).toBe(200);
+    expect(p.pnl).toBeCloseTo(10);
   });
-
   it('prices the paper hands against the top after each sell', () => {
-    const trades = [tr('buy', 100, 1, 1), tr('sell', 100, 2, 2), tr('buy', 10, 1, 3)];
-    const p = position(trades.slice(0, 2), { priceSol: 0.1, sellFeeBps: 0, peaks: peaksAfter(trades) });
-    // after the sell someone paid 0.1 a token: 100 tokens would have fetched 10
-    expect(p.missedSol).toBeCloseTo(8);
+    const trades = [tr('buy', 100, 100, 1), tr('sell', 100, 200, 2)];
+    const p = position(trades, 1, peakAfter([[5, 10]], trades));
+    expect(p.missedUsd).toBeCloseTo(800);
   });
 });
 
 describe('leaderboard', () => {
-  it('ranks traders by profit', () => {
-    const A = 'A'.repeat(32);
-    const B = 'B'.repeat(32);
-    const rows = leaderboard([tr('buy', 100, 1, 1, A), tr('buy', 100, 1, 2, B), tr('sell', 100, 3, 3, B)], 0.01, 0);
-    expect(rows.map((r) => r.trader)).toEqual([B, A]);
-    expect(placement(5, rows)).toBe(1);
-    expect(placement(0.5, rows)).toBe(2);
+  it('ranks wallets by profit and merges EVM case', () => {
+    const rows = leaderboard([tr('buy', 100, 100, 1, EVM), tr('sell', 100, 300, 2, EVM.toUpperCase().replace('0X', '0x')), tr('buy', 100, 100, 3, SOL)], 1);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.pnl).toBeCloseTo(200);
+    expect(placement(500, rows)).toBe(1);
     expect(placement(-1, rows)).toBe(3);
-  });
-});
-
-describe('priceSeries', () => {
-  it('keeps the all-time high when it thins the line', () => {
-    const trades = Array.from({ length: 2000 }, (_, i) => tr('buy', 1, i === 777 ? 99 : 1 + (i % 7) / 100, i));
-    const s = priceSeries(trades, 100);
-    expect(s.length).toBeLessThanOrEqual(102);
-    expect(Math.max(...s.map((p) => p[1]))).toBe(99);
-    expect(s[0]![0]).toBe(0);
   });
 });
 
@@ -86,26 +88,24 @@ describe('simulate', () => {
     [2, 4],
     [3, 3],
   ];
-  it('buys at the entry and sells at the exit, fees taken', () => {
-    const r = simulate({ series, entry: 0, exit: 3, sol: 1, buyFeeBps: 1000, sellFeeBps: 0 });
-    expect(r.tokens).toBeCloseTo(0.9);
-    expect(r.out).toBeCloseTo(2.7);
-    expect(r.pnl).toBeCloseTo(1.7);
-    expect(r.bestOut).toBeCloseTo(3.6);
-    expect(r.bestTs).toBe(2);
+  it('buys at the entry and sells at the exit', () => {
+    const r = simulate({ series, entry: 0, exit: 3, usd: 100 });
+    expect(r.out).toBeCloseTo(300);
+    expect(r.bestOut).toBeCloseTo(400);
     expect(r.path).toHaveLength(4);
   });
+  it('sells at the live price when holding to now', () => {
+    expect(simulate({ series, entry: 0, exit: 3, usd: 100, holdNow: true, nowPrice: 5 }).out).toBeCloseTo(500);
+  });
   it('refuses an exit before the entry', () => {
-    expect(simulate({ series, entry: 2, exit: 1, sol: 1, buyFeeBps: 0, sellFeeBps: 0 }).ok).toBe(false);
+    expect(simulate({ series, entry: 2, exit: 1, usd: 1 }).ok).toBe(false);
   });
 });
 
 describe('rankOf', () => {
   it('maps returns to titles', () => {
     expect(rankOf(-0.9)).toBe('exit-liquidity');
-    expect(rankOf(0)).toBe('breakeven');
     expect(rankOf(0.5)).toBe('profit-taker');
-    expect(rankOf(12)).toBe('oracle');
     expect(rankOf(null)).toBe('breakeven');
   });
 });

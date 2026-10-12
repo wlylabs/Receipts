@@ -29,7 +29,7 @@ export function Printing({ what }: { what: string }) {
 
 export function Failure({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
   const title =
-    error.code === 'not-found' ? 'Not a Bordrless token' : error.code === 'no-trades' ? 'Nothing to print' : error.code === 'invalid' ? 'That address doesn’t parse' : 'The printer jammed';
+    error.code === 'not-found' ? 'Token not found' : error.code === 'unsupported' ? 'Chain not supported yet' : error.code === 'no-trades' ? 'Nothing to print' : error.code === 'invalid' ? 'That address doesn’t parse' : 'The printer jammed';
   return (
     <div className="card mx-auto max-w-md p-6 text-center" role="alert">
       <p className="text-2xl font-bold">{title}</p>

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   title: { default: SITE_TITLE, template: `%s · ${SITE_NAME}` },
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
-  keywords: ['Bordrless', 'Solana', 'PnL', 'receipts', 'wallet tracker', 'memecoin', 'trading game', 'simulator'],
+  keywords: ['DexScreener', 'GeckoTerminal', 'Solana', 'Base', 'Ethereum', 'PnL', 'receipts', 'wallet tracker', 'memecoin', 'trading game', 'simulator'],
   appleWebApp: { capable: true, title: SITE_NAME, statusBarStyle: 'black-translucent' },
   formatDetection: { telephone: false, email: false, address: false },
   openGraph: { type: 'website', siteName: SITE_NAME, title: SITE_TITLE, description: SITE_DESCRIPTION, url: '/' },
