@@ -23,7 +23,7 @@ import { ReplayChart, type Marker } from './ReplayChart';
 import { ResultCard, type Stat } from './ResultCard';
 import { VideoExport } from './VideoExport';
 import type { ReplayVideo } from '../lib/replayVideo';
-import { walletHook, walletVerdict } from '../lib/story';
+import { walletVerdict } from '../lib/story';
 import { TokenImage } from './TokenImage';
 
 type Call = 'profit' | 'rekt' | 'skip';
@@ -133,7 +133,6 @@ function TraderGame({ r }: { r: TraderReceipts }) {
     kicker: short(r.owner),
     symbol: token.symbol,
     chainName: token.chainName,
-    hook: [`${short(r.owner)} on ${token.symbol}`, walletHook(story, (n) => usd(n))],
     verdict: walletVerdict(story, (n) => usd(n)),
     series,
     from,

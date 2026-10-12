@@ -7,7 +7,7 @@ import { renderSound, SAMPLE_RATE, type Cue } from './videoSound';
  * (no sound) as the last resort. Nothing but the run is in the frame: no app name, no logo, no
  * link. The beats:
  *
- *   hook     "$100 in SEAN / bought the dip → ?": the question the viewer stays to see answered
+ *   lead-in  a beat on the bare chart
  *   replay   the playhead runs the chart, the P&L counts, trades pop in (with a caption each in
  *            the story cut)
  *   reveal   the verdict, the P&L, its rank and the numbers behind it
@@ -25,7 +25,7 @@ export const FORMATS: Record<VideoFormat, { width: number; height: number; label
 
 interface Timing {
   seconds: number;
-  /** The hook holds until here; the replay then runs to `play`. */
+  /** The bare chart holds until here; the replay then runs to `play`. */
   hook: number;
   play: number;
   /** The reveal holds until here; then the loop fades back to the first frame. */
@@ -33,8 +33,8 @@ interface Timing {
 }
 
 export const LENGTHS: Record<VideoLength, Timing & { label: string; hint: string }> = {
-  short: { seconds: 9, hook: 1.2, play: 5.6, reveal: 8.3, label: 'Short', hint: '9 s, loops' },
-  story: { seconds: 18, hook: 1.6, play: 12.6, reveal: 17.2, label: 'Story', hint: '18 s, a caption per trade' },
+  short: { seconds: 9, hook: 0.5, play: 5.4, reveal: 8.3, label: 'Short', hint: '9 s, loops' },
+  story: { seconds: 18, hook: 0.6, play: 12.4, reveal: 17.2, label: 'Story', hint: '18 s, a caption per trade' },
 };
 
 export const FPS = 30;
@@ -50,8 +50,6 @@ export interface ReplayVideo {
   kicker?: string;
   symbol: string;
   chainName: string;
-  /** The opening question, two lines: e.g. ["$100 in SEAN", "bought the dip →"]. */
-  hook: [string, string];
   /** The answer in one line, over the P&L: e.g. "Was 5x up, ended down 40%". */
   verdict: string;
   series: readonly [number, number][];
@@ -134,7 +132,6 @@ interface Layout {
   chart: { x0: number; x1: number; y0: number; y1: number };
   counter: { x: number; y: number; size: number; align: CanvasTextAlign };
   caption: { x: number; y: number; size: number };
-  hookSize: number;
   reveal: { top: number; big: number; rankY: number; rankBelow: boolean; statsY: number; cols: number; rowH: number; statSize: number };
 }
 
@@ -150,7 +147,6 @@ function layout(f: VideoFormat): Layout {
       chart: { x0: 96, x1: W - 96, y0: 300, y1: H - 120 },
       counter: { x: W - 96, y: 150, size: 120, align: 'right' },
       caption: { x: 96, y: 238, size: 34 },
-      hookSize: 104,
       reveal: { top: 270, big: 200, rankY: 540, rankBelow: false, statsY: 720, cols: 2, rowH: 84, statSize: 36 },
     };
   if (f === 'square')
@@ -163,7 +159,6 @@ function layout(f: VideoFormat): Layout {
       chart: { x0: 72, x1: W - 72, y0: 420, y1: H - 110 },
       counter: { x: 72, y: 280, size: 120, align: 'left' },
       caption: { x: 72, y: 362, size: 32 },
-      hookSize: 88,
       reveal: { top: 240, big: 170, rankY: 540, rankBelow: true, statsY: 750, cols: 1, rowH: 68, statSize: 34 },
     };
   return {
@@ -175,7 +170,6 @@ function layout(f: VideoFormat): Layout {
     chart: { x0: 80, x1: W - 80, y0: 700, y1: 1480 },
     counter: { x: 80, y: 470, size: 160, align: 'left' },
     caption: { x: 80, y: 585, size: 40 },
-    hookSize: 96,
     reveal: { top: 440, big: 190, rankY: 760, rankBelow: true, statsY: 1010, cols: 1, rowH: 96, statSize: 42 },
   };
 }
@@ -373,27 +367,6 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
       g.textAlign = right ? 'right' : 'left';
       g.fillText(v.date(head), hx + (right ? -16 : 16), y1 + (f === 'portrait' ? 60 : 46));
     }
-  }
-
-  // the hook
-  if (time < T.hook + 0.3) {
-    const a = 1 - easeOut((time - T.hook + 0.1) / 0.35);
-    const pop = easeBack(time / 0.45);
-    A(a);
-    g.fillStyle = 'rgba(255,255,255,0.72)';
-    g.fillRect(0, y0 - 40, W, y1 - y0 + 80);
-    g.save();
-    g.translate(W / 2, (y0 + y1) / 2);
-    g.scale(0.85 + 0.15 * pop, 0.85 + 0.15 * pop);
-    g.textAlign = 'center';
-    fit(g, v.hook[0], L.hookSize, 650, W - pad * 2);
-    g.fillStyle = INK;
-    g.fillText(v.hook[0], 0, -L.hookSize * 0.2);
-    fit(g, `${v.hook[1]} ?`, L.hookSize, 650, W - pad * 2);
-    g.fillStyle = MUTED;
-    g.fillText(`${v.hook[1]} ?`, 0, L.hookSize * 0.95);
-    g.restore();
-    A(1);
   }
 
   // the reveal

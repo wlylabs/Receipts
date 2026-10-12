@@ -1,31 +1,18 @@
 /**
- * The words a video opens and closes on, picked from what the run actually did, so two videos
- * of two runs never read the same. The hook asks without giving the answer away; the verdict is
- * the answer in one line.
+ * The line a video's result opens on, picked from what the run actually did, so two videos of
+ * two runs never read the same.
  */
 
 const mult = (x: number) => (x >= 10 ? `${Math.round(x)}x` : `${x.toFixed(1).replace(/\.0$/, '')}x`);
 const pctAbs = (x: number) => `${Math.round(Math.abs(x) * 100)}%`;
 
 export interface PaperStory {
-  /** Index of the buy in the price line, and of the top and the low after the top. */
-  entry: number;
-  athIdx: number;
-  dipIdx: number;
   holdNow: boolean;
   roi: number;
   /** What the bag fetched at the exit, and at the best exit along the way. */
   out: number;
   bestOut: number;
   usd: number;
-}
-
-/** The second line of a paper trade's hook: where the buy was, never how it went. */
-export function paperHook(s: PaperStory, day: string): string {
-  if (s.entry === 0) return 'bought at launch →';
-  if (s.entry === s.athIdx) return 'bought the top →';
-  if (s.entry === s.dipIdx) return 'bought the dip →';
-  return `bought ${day} →`;
 }
 
 /** One line on how a paper trade went. */
@@ -52,13 +39,6 @@ export interface WalletStory {
   unrealized: number;
   openValue: number;
   missedUsd: number;
-}
-
-/** The second line of a wallet's hook: how much it played, never how it went. */
-export function walletHook(s: WalletStory, money: (n: number) => string): string {
-  if (s.buys && s.sells) return `${s.buys} buys, ${s.sells} sells →`;
-  if (s.buys) return `put in ${money(s.usdIn)} →`;
-  return `${s.sells} sells →`;
 }
 
 /** One line on how a wallet did. */

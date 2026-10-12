@@ -21,7 +21,7 @@ import { ReplayChart, type Marker } from './ReplayChart';
 import { ResultCard, type Stat } from './ResultCard';
 import { VideoExport } from './VideoExport';
 import type { ReplayVideo } from '../lib/replayVideo';
-import { paperHook, paperVerdict } from '../lib/story';
+import { paperVerdict } from '../lib/story';
 import { TokenImage } from './TokenImage';
 
 const BAGS = [50, 100, 500, 1000];
@@ -158,14 +158,13 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
   const video: ReplayVideo | null =
     run && rank
       ? (() => {
-          const story = { entry: run.entry, athIdx, dipIdx, holdNow: run.holdNow, roi: run.sim.roi, out: run.sim.out, bestOut: run.sim.bestOut, usd: run.amount };
+          const story = { holdNow: run.holdNow, roi: run.sim.roi, out: run.sim.out, bestOut: run.sim.bestOut, usd: run.amount };
           const buyTs = series[run.entry]![0];
           const sellTs = series[run.exit]![0];
           const peak = run.sim.bestTs > buyTs && run.sim.bestTs < sellTs ? [{ ts: run.sim.bestTs, text: `Top: ${usd(run.sim.bestOut - run.amount, { signed: true })}`, tone: 'pos' as const }] : [];
           return {
             symbol: token.symbol,
             chainName: token.chainName,
-            hook: [`${usd(run.amount)} in ${token.symbol}`, paperHook(story, day(buyTs).split(',')[0]!)] as [string, string],
             verdict: paperVerdict(story),
             series,
             from: buyTs,
