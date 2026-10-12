@@ -108,7 +108,6 @@ export function ReplayChart({
               </g>
             );
           })}
-          {live && <line x1={hx} x2={hx} y1="0" y2={VH} stroke={color} strokeOpacity="0.4" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />}
         </svg>
 
         {markers

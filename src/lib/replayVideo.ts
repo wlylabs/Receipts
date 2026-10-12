@@ -328,19 +328,9 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   if (v.entry && v.entry > 0 && Math.abs(geo.Y(v.entry) - geo.Y(nowPrice)) > 44 * big) tag(v.entry, INK2, v.label(v.entry * v.scale));
   tag(nowPrice, playing ? color : INK, v.label(nowPrice * v.scale));
 
-  // the playhead
+  // the playhead's date, under the chart
   if (playing && head > v.from && p < 1) {
     const hx = geo.X(head);
-    g.setLineDash([8, 10]);
-    g.strokeStyle = color;
-    A(0.4);
-    g.lineWidth = 2;
-    g.beginPath();
-    g.moveTo(hx, y0 - 10);
-    g.lineTo(hx, y1);
-    g.stroke();
-    g.setLineDash([]);
-    A(1);
     font(g, f === 'portrait' ? 34 : 26, 500);
     g.fillStyle = MUTED;
     const right = hx > (x0 + px1) / 2;
