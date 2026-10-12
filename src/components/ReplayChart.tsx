@@ -50,7 +50,7 @@ export function ReplayChart({
   tone?: 'pos' | 'neg' | null;
   /** Text in the bubble riding the playhead, e.g. the running P&L. */
   bubble?: string;
-  /** A price to mark with a dashed line, e.g. the average buy. */
+  /** A price to tag on the axis, e.g. the average buy. */
   entry?: number;
   /** What the axis shows instead of price, e.g. market cap: price times `scale`. */
   scale?: number;
@@ -96,9 +96,6 @@ export function ReplayChart({
           ))}
           {/* the run's stretch, shaded */}
           {playhead > runFrom && <rect x={geo.x(runFrom)} y="0" width={Math.max(0, hx - geo.x(runFrom))} height={VH} fill={color} fillOpacity="0.05" />}
-          {entry !== undefined && entry > 0 && (
-            <line x1="0" x2={VW} y1={geo.y(entry)} y2={geo.y(entry)} stroke="var(--ink-2)" strokeOpacity="0.55" strokeDasharray="6 6" vectorEffect="non-scaling-stroke" />
-          )}
           {shown.map(([ts, o, h, l, c]) => {
             const up = c >= o;
             const cx0 = geo.x(ts + step / 2);
@@ -112,7 +109,6 @@ export function ReplayChart({
             );
           })}
           {live && <line x1={hx} x2={hx} y1="0" y2={VH} stroke={color} strokeOpacity="0.4" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />}
-          <line x1="0" x2={VW} y1={hy} y2={hy} stroke={color} strokeOpacity="0.5" strokeDasharray="2 4" vectorEffect="non-scaling-stroke" />
         </svg>
 
         {markers

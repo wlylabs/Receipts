@@ -55,7 +55,7 @@ export interface ReplayVideo {
   /** The chart as candles over the same stretch, `step` seconds each. */
   candles: readonly Candle[];
   step: number;
-  /** The average buy, drawn as a dashed line; none when there were no buys. */
+  /** The average buy, tagged on the axis; none when there were no buys. */
   entry?: number;
   from: number;
   to: number;
@@ -311,16 +311,6 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.fillRect(geo.X(v.from), y0 - 20, geo.X(head) - geo.X(v.from), y1 - y0 + 40);
     A(1);
   }
-  if (v.entry && v.entry > 0) {
-    g.setLineDash([12, 12]);
-    g.strokeStyle = X_LIGHT.entry;
-    g.lineWidth = 2.5;
-    g.beginPath();
-    g.moveTo(x0, geo.Y(v.entry));
-    g.lineTo(px1, geo.Y(v.entry));
-    g.stroke();
-    g.setLineDash([]);
-  }
   drawCandles(g, shown, v.step, geo.X, geo.Y, { up: POS, down: NEG, body: 0.68 });
 
   // trades pop as the playhead reaches them, buys under their candle and sells over it
@@ -341,7 +331,6 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   // the playhead
   if (playing && head > v.from && p < 1) {
     const hx = geo.X(head);
-    const hy = geo.Y(nowPrice);
     g.setLineDash([8, 10]);
     g.strokeStyle = color;
     A(0.4);
@@ -349,8 +338,6 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.beginPath();
     g.moveTo(hx, y0 - 10);
     g.lineTo(hx, y1);
-    g.moveTo(x0, hy);
-    g.lineTo(px1, hy);
     g.stroke();
     g.setLineDash([]);
     A(1);

@@ -13,6 +13,4 @@ export const X_LIGHT = {
   neg: '#f4212e',
   posWash: '#e6f8f2',
   negWash: '#feeced',
-  /** The dashed entry line. */
-  entry: 'rgba(83,100,113,0.6)',
 } as const;
