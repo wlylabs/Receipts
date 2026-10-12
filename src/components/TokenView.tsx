@@ -67,20 +67,25 @@ function TokenPage({ r }: { r: TokenReceipts }) {
           {token.change24h !== null && <p className={cx('num text-[12.5px] font-medium', token.change24h >= 0 ? 'text-pos' : 'text-neg')}>{pct(token.change24h / 100, { signed: true })} 24h</p>}
         </div>
       </header>
-      <dl className="no-scrollbar mt-4 flex gap-5 overflow-x-auto border-y border-line py-2.5 text-[12.5px]">
+      {/* the numbers, in a grid that wraps instead of scrolling sideways on a phone */}
+      <dl className="mt-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line text-[12.5px] sm:grid-cols-4">
         <Kv k="Price" v={price(token.priceUsd)} />
+        <Kv k="ATH" v={cap(r.ath.priceUsd)} />
         <Kv k="Liquidity" v={usd(token.liquidityUsd)} />
         <Kv k="Vol 24h" v={usd(token.volume24hUsd)} />
-        <Kv k="ATH" v={cap(r.ath.priceUsd)} />
-        <a href={token.url} target="_blank" rel="noreferrer" className="ml-auto flex shrink-0 items-center gap-1 text-muted hover:text-ink">
+      </dl>
+      <div className="mt-2.5 flex items-center justify-between gap-3 text-[12.5px] text-muted">
+        <p className="num min-w-0 truncate">
+          {token.createdAt ? (
+            <>
+              Launched <span className="font-medium text-ink">{date(token.createdAt)}</span> · {span(now - token.createdAt)} ago
+            </>
+          ) : null}
+        </p>
+        <a href={token.url} target="_blank" rel="noreferrer" className="flex shrink-0 items-center gap-1 hover:text-ink">
           DexScreener <ArrowUpRight className="size-3.5" aria-hidden />
         </a>
-      </dl>
-      {token.createdAt && (
-        <p className="num mt-2.5 text-[12.5px] text-muted">
-          Launched <span className="font-medium text-ink">{date(token.createdAt)}</span> · {span(now - token.createdAt)} ago to now
-        </p>
-      )}
+      </div>
 
       {/* the token's whole history */}
       <section className="panel mt-4 p-3 sm:p-4" aria-label="All-time chart">
@@ -114,9 +119,9 @@ function TokenPage({ r }: { r: TokenReceipts }) {
 
 function Kv({ k, v }: { k: string; v: string }) {
   return (
-    <div className="flex shrink-0 gap-1.5">
-      <dt className="text-muted">{k}</dt>
-      <dd className="num font-medium">{v}</dd>
+    <div className="bg-surface px-3 py-2">
+      <dt className="text-[11.5px] text-muted">{k}</dt>
+      <dd className="num mt-0.5 truncate text-[14px] font-semibold">{v}</dd>
     </div>
   );
 }

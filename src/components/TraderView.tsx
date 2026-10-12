@@ -12,7 +12,7 @@ import { bucket, mergeMarkers } from '../lib/candles';
 import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
 import type { Trade, TraderReceipts } from '../lib/types';
-import { compact, date, dateTime, day, mcap, pct, price, short, span, usd } from '../lib/format';
+import { date, dateTime, day, mcap, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_URL } from '../lib/site';
 import { shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
@@ -138,26 +138,29 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
-      <header className="flex flex-wrap items-center gap-2 sm:gap-3">
-        <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
-          <p className="eyebrow">Wallet · {token.chainName}</p>
-          <h1 className="num truncate text-[20px] font-semibold tracking-tight" title={r.owner}>
-            {short(r.owner)}
-          </h1>
-        </div>
-        <Link href={ROUTES.wallet(r.owner)} className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
-          Other tokens
-        </Link>
-        {chain && (
-          <a href={chain.account(r.owner)} target="_blank" rel="noreferrer" className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
-            Explorer <ArrowUpRight className="size-3.5" aria-hidden />
-          </a>
-        )}
-      </header>
+      <div className="mx-auto max-w-3xl">
+        <header className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
+            <p className="eyebrow">Wallet · {token.chainName}</p>
+            <h1 className="num truncate text-[20px] font-semibold tracking-tight" title={r.owner}>
+              {short(r.owner)}
+            </h1>
+          </div>
+          <Link href={ROUTES.token(token.address)} className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
+            <ArrowLeft className="size-3.5" aria-hidden /> {token.symbol} traders
+          </Link>
+          <Link href={ROUTES.wallet(r.owner)} className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
+            Other tokens
+          </Link>
+          {chain && (
+            <a href={chain.account(r.owner)} target="_blank" rel="noreferrer" className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]" aria-label="Open the wallet in the explorer">
+              <span className="hidden sm:inline">Explorer</span> <ArrowUpRight className="size-3.5" aria-hidden />
+            </a>
+          )}
+        </header>
 
-      <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
-        {/* the chart, where the wallet's trades replay */}
-        <section className="panel p-3 sm:p-4" aria-label="Replay">
+        {/* the chart, where the wallet's trades replay, with the video right under it */}
+        <section className="panel mt-4 p-3 sm:p-4" aria-label="Replay">
           <div className="flex min-h-9 items-center justify-between gap-3 px-1">
             <Link href={ROUTES.token(token.address)} className="flex min-w-0 items-center gap-2">
               <TokenImage src={token.image} symbol={token.symbol} className="size-7 text-xs" />
@@ -168,14 +171,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
                 </span>
               </span>
             </Link>
-            <div className="flex items-center gap-2">
-              <p className={cx('num text-[20px] font-semibold tracking-tight', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
-              {replay.playing && (
-                <button type="button" onClick={replay.skip} className="btn btn-quiet h-8 min-h-0 px-2.5 text-[12.5px]" aria-label="Skip the replay">
-                  <FastForward className="size-3.5" />
-                </button>
-              )}
-            </div>
+            <p className={cx('num text-[20px] font-semibold tracking-tight', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
           </div>
           <div className="relative mt-3">
             <ReplayChart candles={chart.candles} step={chart.step} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
@@ -186,91 +182,36 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
             </div>
           </div>
 
-          {done && (
-            <div className="mt-4 border-t border-line px-1 pt-4" role="status">
-              <ResultCard kicker={`${short(r.owner)} on ${token.symbol}`} pnl={usd(p.pnl, { signed: true })} roi={p.roi === null ? 'no buys seen' : pct(p.roi, { signed: true })} tone={toneOf(p.pnl)} rank={rank} stats={stats}>
-                <div className="mt-4 grid grid-cols-2 gap-2">
-                  <button type="button" onClick={replay.play} className="btn btn-quiet">
-                    <RotateCcw className="size-4" aria-hidden /> Replay
-                  </button>
-                  <button type="button" onClick={share} className="btn btn-quiet">
-                    <Link2 className="size-4" aria-hidden /> Share
-                  </button>
-                </div>
-              </ResultCard>
-            </div>
-          )}
-        </section>
-
-        {/* the video */}
-        <section className="space-y-4" aria-label="Video">
-          <div className="panel p-4 sm:p-5">
-            {!done ? (
-              <p className="flex items-center gap-2 text-[15px] font-medium" role="status">
-                <Loader2 className="size-4 animate-spin" aria-hidden /> Replaying…
-              </p>
+          <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2" role="status">
+            {done ? (
+              <VideoExport video={video} fileBase={fileBase} className="btn-primary h-11 text-[15px]" />
             ) : (
-              <div className="rise" role="status">
-                <h2 className="text-[20px] font-semibold tracking-tight">Make the video</h2>
-                <p className="mt-1 text-[13.5px] text-muted">
-                  {short(r.owner)} on {token.symbol}: {usd(p.pnl, { signed: true })}. Pick a size and length, then download it.
-                </p>
-                <div className="mt-4 grid gap-2">
-                  <VideoExport video={video} fileBase={fileBase} className="btn-primary h-12 text-[15px]" />
-                  <Link href={ROUTES.token(token.address)} className="btn btn-quiet">
-                    <ArrowLeft className="size-4" aria-hidden /> Other {token.symbol} traders
-                  </Link>
-                </div>
-              </div>
+              <button type="button" onClick={replay.skip} className="btn btn-quiet h-11">
+                <Loader2 className="size-4 animate-spin" aria-hidden /> Replaying… <FastForward className="size-4" aria-hidden />
+                <span className="sr-only">Skip the replay</span>
+              </button>
             )}
+            <button type="button" onClick={replay.play} disabled={!done} className="btn btn-quiet h-11 px-3.5" aria-label="Replay">
+              <RotateCcw className="size-4" aria-hidden />
+            </button>
+            <button type="button" onClick={share} className="btn btn-quiet h-11 px-3.5" aria-label="Share">
+              <Link2 className="size-4" aria-hidden />
+            </button>
           </div>
-          <p className="text-[12.5px] leading-relaxed text-muted">
-            {r.source === 'chain'
-              ? `From the chain: every ${token.symbol} transfer in or out of this wallet${r.complete ? '' : ' (latest ones only)'}, priced at the candle of its time. Tokens received as gifts count as buys.`
-              : `From ${token.symbol}’s latest ${r.window.trades} DEX trades (${span(r.window.to - r.window.from)}). Earlier trades by this wallet are not in that feed.`}
-          </p>
         </section>
-      </div>
 
-      {done && (
-        <section className="mt-6" aria-labelledby="trades">
-          <h2 id="trades" className="text-[14px] font-semibold">
-            Trades
-          </h2>
-          <div className="panel mt-2 max-h-96 overflow-auto">
-            <table className="w-full text-[13px]">
-              <thead className="sticky top-0 bg-surface text-left text-muted">
-                <tr className="border-b border-line">
-                  <th className="px-3 py-2 text-[12px] font-medium">Side</th>
-                  <th className="px-3 py-2 text-[12px] font-medium">Time</th>
-                  <th className="hidden px-3 py-2 text-right text-[12px] font-medium sm:table-cell">Tokens</th>
-                  <th className="px-3 py-2 text-right text-[12px] font-medium">Value</th>
-                  <th className="px-3 py-2">
-                    <span className="sr-only">Transaction</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line">
-                {[...trades].reverse().map((t, i) => (
-                  <tr key={`${t.tx}:${i}`}>
-                    <td className={cx('px-3 py-2 font-medium', t.side === 'buy' ? 'text-pos' : 'text-neg')}>{t.side === 'buy' ? 'Buy' : 'Sell'}</td>
-                    <td className="num whitespace-nowrap px-3 py-2 text-muted">{dateTime(t.ts)}</td>
-                    <td className="num hidden px-3 py-2 text-right sm:table-cell">{compact(t.tokens)}</td>
-                    <td className="num px-3 py-2 text-right">{usd(t.usd)}</td>
-                    <td className="px-3 py-2 text-right">
-                      {chain && (
-                        <a href={chain.tx(t.tx)} target="_blank" rel="noreferrer" className="text-faint hover:text-ink" aria-label="Open the transaction in the explorer">
-                          <ArrowUpRight className="inline size-3.5" />
-                        </a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
+        {done && (
+          <section className="panel rise mt-4 p-4 sm:p-5" aria-label="Result">
+            <ResultCard kicker={`${short(r.owner)} on ${token.symbol}`} pnl={usd(p.pnl, { signed: true })} roi={p.roi === null ? 'no buys seen' : pct(p.roi, { signed: true })} tone={toneOf(p.pnl)} rank={rank} stats={stats} />
+          </section>
+        )}
+
+        <p className="mt-3 px-1 text-[12px] leading-relaxed text-faint">
+          {r.source === 'chain'
+            ? `From the chain: every ${token.symbol} transfer in or out of this wallet${r.complete ? '' : ' (latest ones only)'}, priced at the candle of its time. Tokens received as gifts count as buys.`
+            : `From ${token.symbol}’s latest ${r.window.trades} DEX trades (${span(r.window.to - r.window.from)}). Earlier trades by this wallet are not in that feed.`}
+        </p>
+      </div>
     </div>
   );
 }
