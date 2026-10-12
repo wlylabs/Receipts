@@ -10,7 +10,8 @@ export function Sheet({ open, onClose, title, wide = false, children }: { open: 
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
-    panel.current?.focus();
+    // a field inside that asked for focus keeps it
+    if (!panel.current?.contains(document.activeElement)) panel.current?.focus();
     const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     document.addEventListener('keydown', key);
     const overflow = document.body.style.overflow;

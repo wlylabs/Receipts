@@ -14,7 +14,7 @@ import type { ApiError, Resolved } from '../lib/types';
  * One box for both: a token CA opens its top traders, a wallet opens the replay of its trades. What
  * was pasted is asked of DexScreener, so nobody has to say which it is.
  */
-export function Omnibox({ autoFocus = false, size = 'lg', initial = '' }: { autoFocus?: boolean; size?: 'lg' | 'sm'; initial?: string }) {
+export function Omnibox({ autoFocus = false, size = 'lg', initial = '', onGo }: { autoFocus?: boolean; size?: 'lg' | 'sm'; initial?: string; onGo?: () => void }) {
   const router = useRouter();
   const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +42,7 @@ export function Omnibox({ autoFocus = false, size = 'lg', initial = '' }: { auto
       router.push(body.kind === 'token' ? ROUTES.token(body.address) : ROUTES.wallet(body.address));
       // the page stays; it shows the result under the box
       setBusy(false);
+      onGo?.();
     } catch (e) {
       setBusy(false);
       setError((e as Error).message === 'resolve' ? 'Couldn’t check that address. Try again.' : (e as Error).message);
@@ -96,7 +97,7 @@ export function Omnibox({ autoFocus = false, size = 'lg', initial = '' }: { auto
           enterKeyHint="go"
           aria-invalid={!!error}
           aria-describedby={error ? 'omnibox-error' : undefined}
-          className={cx('num min-w-0 flex-1 bg-transparent px-1.5 outline-none placeholder:text-faint', lg ? 'text-[15px]' : 'text-[14px]')}
+          className={cx('num min-w-0 flex-1 bg-transparent px-1.5 outline-none focus-visible:outline-none placeholder:text-faint', lg ? 'text-[15px]' : 'text-[14px]')}
         />
         {busy ? (
           <span className="grid size-10 place-items-center text-muted">

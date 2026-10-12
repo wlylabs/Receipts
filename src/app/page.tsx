@@ -20,7 +20,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 }
 
 /**
- * The whole app on one page: the paste box, and under it whatever was pasted. A token CA shows its
+ * The whole app on one page: the paste box, or whatever was pasted. A token CA shows its
  * all-time chart and top 3 traders; a wallet shows its tokens, then the replay of one.
  */
 export default async function HomePage({ searchParams }: Props) {
@@ -30,16 +30,8 @@ export default async function HomePage({ searchParams }: Props) {
   const showing = wallet || ca;
 
   if (showing) {
-    return (
-      <>
-        <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-6">
-          <div id="paste" className="mx-auto max-w-2xl scroll-mt-24">
-            <Omnibox key={showing} size="sm" initial={showing} />
-          </div>
-        </div>
-        {wallet ? <TraderView key={`${wallet}:${ca}`} address={wallet} ca={ca} /> : <TokenView key={ca} ca={ca} />}
-      </>
-    );
+    // the search in the app bar takes the next address
+    return wallet ? <TraderView key={`${wallet}:${ca}`} address={wallet} ca={ca} /> : <TokenView key={ca} ca={ca} />;
   }
 
   return (
