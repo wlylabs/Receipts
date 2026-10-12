@@ -21,7 +21,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ address: st
   try {
     const r = await loadToken(ca);
     if (!r.ok) return fail(r.code, r.error);
-    const { token, series, candle, highs, trades } = r.value;
+    const { token, series, candles, candle, highs, trades } = r.value;
     if (address.startsWith('0x') !== token.address.startsWith('0x')) return fail('invalid', `That wallet can’t hold a ${token.chainName} token.`);
     const key = address.startsWith('0x') ? address.toLowerCase() : address;
 
@@ -50,6 +50,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ address: st
       position: pos,
       trades: mine.map((t) => [t.ts, t.side, t.tokens, t.usd, t.priceUsd, t.tx]),
       series,
+      candles,
       candle,
       window: windowOf(trades),
       place: placement(pos.pnl, board.filter((b) => b.trader !== key)),

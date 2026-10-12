@@ -4,11 +4,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 /**
  * A playhead from 0 to 1 over `ms`, driven by animation frames. `play` starts it from the
- * beginning, `skip` jumps to the end; `done` is true once it has reached it.
+ * beginning, `skip` jumps to the end; `done` is true once it has reached it. With `autoplay` it
+ * starts playing on mount.
  */
-export function useReplay(ms: number) {
-  const [t, setT] = useState(1);
-  const [playing, setPlaying] = useState(false);
+export function useReplay(ms: number, autoplay = false) {
+  const [t, setT] = useState(autoplay ? 0 : 1);
+  const [playing, setPlaying] = useState(autoplay);
   const start = useRef(0);
   const frame = useRef(0);
 
@@ -16,7 +17,7 @@ export function useReplay(ms: number) {
     if (!playing) return;
     const tick = (now: number) => {
       if (!start.current) start.current = now;
-      const p = Math.min(1, (now - start.current) / ms);
+      const p = reducedMotion() ? 1 : Math.min(1, (now - start.current) / ms);
       setT(p);
       if (p < 1) frame.current = requestAnimationFrame(tick);
       else setPlaying(false);
@@ -27,7 +28,7 @@ export function useReplay(ms: number) {
 
   const play = useCallback(() => {
     start.current = 0;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (reducedMotion()) {
       setT(1);
       return;
     }
@@ -43,3 +44,5 @@ export function useReplay(ms: number) {
 
   return { t, playing, play, skip };
 }
+
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;

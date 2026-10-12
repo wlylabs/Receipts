@@ -1,5 +1,7 @@
 import type { Marker } from '../components/ReplayChart';
 import { renderSound, SAMPLE_RATE, type Cue } from './videoSound';
+import { X_LIGHT } from './palette';
+import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './candles';
 
 /**
  * A video of one replay, drawn on a canvas and encoded in the browser: MP4 (H.264 + AAC) through
@@ -50,6 +52,11 @@ export interface ReplayVideo {
   /** The answer in one line, over the P&L: e.g. "Was 5x up, ended down 40%". */
   verdict: string;
   series: readonly [number, number][];
+  /** The chart as candles over the same stretch, `step` seconds each. */
+  candles: readonly Candle[];
+  step: number;
+  /** The average buy, tagged on the axis; none when there were no buys. */
+  entry?: number;
   from: number;
   to: number;
   markers: Marker[];
@@ -63,16 +70,14 @@ export interface ReplayVideo {
   rank: { name: string; line: string };
   stats: { k: string; v: string }[];
   money: (n: number) => string;
+  /** What the axis shows instead of price, e.g. market cap: price times `scale`. */
+  scale: number;
+  /** Formats an axis value (already scaled). */
+  label: (n: number) => string;
   date: (ts: number) => string;
 }
 
-const INK = '#111113';
-const INK2 = '#3f3f46';
-const MUTED = '#71717a';
-const LINE = '#ebebee';
-const SUBTLE = '#f7f7f8';
-const POS = '#16a34a';
-const NEG = '#dc2626';
+const { bg: BG, ink: INK, ink2: INK2, muted: MUTED, line: LINE, subtle: SUBTLE, pos: POS, neg: NEG } = X_LIGHT;
 const SANS = "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif";
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -87,11 +92,63 @@ const easeBack = (x: number) => {
   return 1 + (c + 1) * (v - 1) ** 3 + c * (v - 1) ** 2;
 };
 
-/** How far the playhead has run, 0 to 1. The story cut keeps a steadier pace so captions can be read. */
-export function playAt(time: number, l: VideoLength = 'short'): number {
+/** What the timing needs of a run: its stretch and, for the slow motion, its trades. */
+type Run = Pick<ReplayVideo, 'from' | 'to'> & { markers?: readonly Marker[] };
+
+/** How much slower the replay runs right on a trade, and over how much of the run it eases back. */
+const SLOW = 2.4;
+const SLOW_WIDTH = 0.035;
+const WARP_STEPS = 512;
+const warps = new WeakMap<object, Float64Array | null>();
+
+/**
+ * Slow motion around trades, as a table: the share of the replay's time spent by each point of the
+ * run, which rises near every trade. Null when there are no trades to slow down for.
+ */
+function warpTable(v: Run): Float64Array | null {
+  if (warps.has(v)) return warps.get(v)!;
+  const span = Math.max(1, v.to - v.from);
+  const at = (v.markers ?? []).map((m) => (m.ts - v.from) / span).filter((u) => u >= 0 && u <= 1);
+  let table: Float64Array | null = null;
+  if (at.length) {
+    table = new Float64Array(WARP_STEPS + 1);
+    for (let i = 1; i <= WARP_STEPS; i++) {
+      const u = (i - 0.5) / WARP_STEPS;
+      let w = 1;
+      for (const a of at) w += SLOW * Math.exp(-(((u - a) / SLOW_WIDTH) ** 2));
+      table[i] = table[i - 1]! + w;
+    }
+    const total = table[WARP_STEPS]!;
+    for (let i = 0; i <= WARP_STEPS; i++) table[i] = table[i]! / total;
+  }
+  warps.set(v, table);
+  return table;
+}
+
+/** The point of the run reached once a share `x` of the replay's time has passed. */
+function warp(x: number, table: Float64Array | null): number {
+  if (!table || x <= 0 || x >= 1) return clamp01(x);
+  let lo = 0;
+  let hi = WARP_STEPS;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (table[mid]! <= x) lo = mid;
+    else hi = mid;
+  }
+  const a = table[lo]!;
+  const b = table[hi]!;
+  return (lo + (x - a) / Math.max(1e-12, b - a)) / WARP_STEPS;
+}
+
+/**
+ * How far the playhead has run, 0 to 1. The story cut keeps a steadier pace so captions can be
+ * read; given the run, the replay slows down as it reaches each trade.
+ */
+export function playAt(time: number, l: VideoLength = 'short', v?: Run): number {
   const T = LENGTHS[l];
   const x = (time - T.hook) / (T.play - T.hook);
-  return l === 'story' ? clamp01(x) * 0.5 + easeInOut(x) * 0.5 : easeInOut(x);
+  const eased = l === 'story' ? clamp01(x) * 0.5 + easeInOut(x) * 0.5 : easeInOut(x);
+  return v ? warp(eased, warpTable(v)) : eased;
 }
 
 export function revealAt(time: number, l: VideoLength = 'short'): number {
@@ -99,14 +156,14 @@ export function revealAt(time: number, l: VideoLength = 'short'): number {
 }
 
 /** The time in the video at which the playhead reaches a timestamp of the run. */
-export function timeOf(ts: number, v: Pick<ReplayVideo, 'from' | 'to'>, l: VideoLength): number {
+export function timeOf(ts: number, v: Run, l: VideoLength): number {
   const T = LENGTHS[l];
   const target = (ts - v.from) / Math.max(1, v.to - v.from);
   let lo = T.hook;
   let hi = T.play;
   for (let i = 0; i < 30; i++) {
     const mid = (lo + hi) / 2;
-    if (playAt(mid, l) < target) lo = mid;
+    if (playAt(mid, l, v) < target) lo = mid;
     else hi = mid;
   }
   return hi;
@@ -135,7 +192,7 @@ function layout(f: VideoFormat): Layout {
       pad: 96,
       headerY: 150,
       symbolSize: 76,
-      chart: { x0: 96, x1: W - 96, y0: 300, y1: H - 120 },
+      chart: { x0: 96, x1: W - 96, y0: 340, y1: H - 120 },
       counter: { x: W - 96, y: 150, size: 120, align: 'right' },
       caption: { x: 96, y: 238, size: 34 },
       reveal: { top: 270, big: 200, rankY: 540, rankBelow: false, statsY: 720, cols: 2, rowH: 84, statSize: 36 },
@@ -147,7 +204,7 @@ function layout(f: VideoFormat): Layout {
       pad: 72,
       headerY: 140,
       symbolSize: 72,
-      chart: { x0: 72, x1: W - 72, y0: 420, y1: H - 110 },
+      chart: { x0: 72, x1: W - 72, y0: 470, y1: H - 110 },
       counter: { x: 72, y: 280, size: 120, align: 'left' },
       caption: { x: 72, y: 362, size: 32 },
       reveal: { top: 240, big: 170, rankY: 540, rankBelow: true, statsY: 750, cols: 1, rowH: 68, statSize: 34 },
@@ -158,7 +215,7 @@ function layout(f: VideoFormat): Layout {
     pad: 80,
     headerY: 230,
     symbolSize: 92,
-    chart: { x0: 80, x1: W - 80, y0: 700, y1: 1480 },
+    chart: { x0: 80, x1: W - 80, y0: 750, y1: 1480 },
     counter: { x: 80, y: 470, size: 160, align: 'left' },
     caption: { x: 80, y: 585, size: 40 },
     reveal: { top: 440, big: 190, rankY: 760, rankBelow: true, statsY: 1010, cols: 1, rowH: 96, statSize: 42 },
@@ -176,46 +233,94 @@ function fit(g: CanvasRenderingContext2D, text: string, size: number, weight: nu
   if (w > max) font(g, Math.floor((size * max) / w), weight);
 }
 
-function geometry(v: ReplayVideo, L: Layout) {
+/** Width kept at the chart's right for the price axis. */
+const axisW = (L: Layout) => (L.H > L.W ? 190 : 170);
+
+/** What the chart frames: a stretch of time and a band of prices (as logs). */
+interface View {
+  ta: number;
+  tb: number;
+  llo: number;
+  lhi: number;
+}
+
+/** The whole chart. */
+function fullView(v: ReplayVideo): View {
   const s = v.series.filter(([, p]) => p > 0);
-  const t0 = s[0]?.[0] ?? v.from;
-  const t1 = Math.max(s.at(-1)?.[0] ?? v.to, v.to);
-  let lo = Infinity;
-  let hi = 0;
-  for (const [, p] of s) {
-    lo = Math.min(lo, p);
-    hi = Math.max(hi, p);
+  const c = v.candles;
+  const ta = c[0]?.[0] ?? s[0]?.[0] ?? v.from;
+  const tb = Math.max((c.at(-1)?.[0] ?? s.at(-1)?.[0] ?? v.to) + (c.length ? v.step : 0), v.to);
+  const { lo, hi } = range(c, [...s.map(([, p]) => p), ...v.markers.filter((m) => m.ts >= ta).map((m) => m.price), v.entry ?? 0]);
+  return { ta, tb, llo: Math.log(lo), lhi: Math.log(hi) };
+}
+
+/** How much closer than the whole chart the camera gets while it follows the playhead. */
+const ZOOM = 2.6;
+
+/** The camera on the playhead: the latest candles, the playhead a little right of centre. `wide` pulls it back. */
+function followView(v: ReplayVideo, full: View, head: number, wide = 1): View {
+  const w = Math.max((full.tb - full.ta) / ZOOM, v.step * 14) * wide;
+  let tb = head + w * 0.3;
+  let ta = tb - w;
+  if (ta < full.ta) [ta, tb] = [full.ta, full.ta + w];
+  const seen = upTo(v.candles, v.step, head).filter((k) => k[0] + v.step >= ta);
+  const { lo, hi } = range(seen.length ? seen : v.candles, v.markers.filter((m) => m.ts >= ta && m.ts <= head).map((m) => m.price));
+  const d = Math.max(Math.log(hi) - Math.log(lo), 0.04);
+  // room above and below for the trade markers
+  return { ta, tb, llo: Math.log(lo) - d * 0.16, lhi: Math.log(hi) + d * 0.16 };
+}
+
+/** How close the camera is, 1 (on the playhead) to 0 (the whole chart): it pulls back out before the reveal. */
+export function zoomAt(time: number, l: VideoLength = 'short'): number {
+  const T = LENGTHS[l];
+  return 1 - easeInOut((time - (T.play - 1)) / 1);
+}
+
+/**
+ * The camera at a moment: the whole chart blended toward the follow view. The follow view is
+ * averaged over the last half second of the run so the frame drifts instead of jumping when a
+ * new high comes in or an old candle leaves.
+ */
+function cameraAt(v: ReplayVideo, full: View, time: number, l: VideoLength): View {
+  const z = zoomAt(time, l);
+  if (z <= 0) return full;
+  const T = LENGTHS[l];
+  // a slow push in over the opening
+  const wide = 1 + 0.3 * (1 - easeInOut(time / (T.hook + 1)));
+  const n = 8;
+  const f = { ta: 0, tb: 0, llo: 0, lhi: 0 };
+  for (let i = 0; i < n; i++) {
+    const t = Math.max(T.hook, time - i * 0.07);
+    const head = v.from + (v.to - v.from) * playAt(t, l, v);
+    const k = followView(v, full, head, wide);
+    f.ta += k.ta / n;
+    f.tb += k.tb / n;
+    f.llo += k.llo / n;
+    f.lhi += k.lhi / n;
   }
-  for (const m of v.markers) {
-    if (m.price > 0 && m.ts >= t0) {
-      lo = Math.min(lo, m.price);
-      hi = Math.max(hi, m.price);
-    }
-  }
-  if (!Number.isFinite(lo)) lo = hi = 1;
-  const llo = Math.log(lo);
-  const lhi = Math.log(hi === lo ? hi * 1.1 : hi);
-  const { x0, x1, y0, y1 } = L.chart;
-  const X = (ts: number) => x0 + ((ts - t0) / Math.max(1, t1 - t0)) * (x1 - x0);
-  const level = (p: number) => (Math.log(Math.max(p, lo)) - llo) / Math.max(1e-9, lhi - llo);
+  const mix = (a: number, b: number) => a + (b - a) * z;
+  return { ta: mix(full.ta, f.ta), tb: mix(full.tb, f.tb), llo: mix(full.llo, f.llo), lhi: mix(full.lhi, f.lhi) };
+}
+
+function geometry(v: ReplayVideo, L: Layout, view: View = fullView(v)) {
+  const s = v.series.filter(([, p]) => p > 0);
+  const { ta, tb, llo, lhi } = view;
+  const { x0, y0, y1 } = L.chart;
+  const x1 = L.chart.x1 - axisW(L);
+  const X = (ts: number) => x0 + ((ts - ta) / Math.max(1, tb - ta)) * (x1 - x0);
+  const level = (p: number) => (Math.log(Math.max(p, 1e-300)) - llo) / Math.max(1e-9, lhi - llo);
   const Y = (p: number) => y1 - level(p) * (y1 - y0);
   const at = (ts: number) => {
     if (!s.length) return 0;
     if (ts <= s[0]![0]) return s[0]![1];
     for (let i = 1; i < s.length; i++) {
-      const [ta, pa] = s[i - 1]!;
-      const [tb, pb] = s[i]!;
-      if (ts <= tb) return pa + ((pb - pa) * (ts - ta)) / Math.max(1, tb - ta);
+      const [sa, pa] = s[i - 1]!;
+      const [sb, pb] = s[i]!;
+      if (ts <= sb) return pa + ((pb - pa) * (ts - sa)) / Math.max(1, sb - sa);
     }
     return s.at(-1)![1];
   };
-  const points = (a: number, b: number): [number, number][] => {
-    const out: [number, number][] = [[a, at(a)]];
-    for (const p of s) if (p[0] > a && p[0] < b) out.push(p);
-    out.push([b, at(b)]);
-    return out;
-  };
-  return { s, t0, X, Y, at, level, points };
+  return { s, t0: v.candles[0]?.[0] ?? s[0]?.[0] ?? v.from, x1, X, Y, at, level, ticks: logTicks(Math.exp(llo) * v.scale, Math.exp(lhi) * v.scale, 4).map((t) => t / v.scale) };
 }
 
 /** One frame at `time` seconds. */
@@ -229,8 +334,8 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   const T = LENGTHS[l];
   const L = layout(f);
   const { W, H, pad } = L;
-  const geo = geometry(v, L);
-  const p = playAt(time, l);
+  const geo = geometry(v, L, cameraAt(v, fullView(v), time, l));
+  const p = playAt(time, l, v);
   const head = v.from + (v.to - v.from) * p;
   const playing = time >= T.hook;
   const running = playing ? v.pnlAt(head) : 0;
@@ -238,9 +343,27 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   const r = revealAt(time, l);
   const A = (a: number) => (g.globalAlpha = alpha * a);
 
+  // the punch: a jolt that fades fast each time a trade lands
+  let punch = 0;
+  let punched: Marker | null = null;
+  if (playing && r < 1) {
+    for (const m of v.markers) {
+      const dt = time - timeOf(Math.max(m.ts, v.from), v, l);
+      const k = dt >= 0 ? Math.exp(-dt / 0.22) : 0;
+      if (k > punch) [punch, punched] = [k, m];
+    }
+    punch *= 1 - r;
+  }
+
   A(1);
-  g.fillStyle = '#ffffff';
+  g.fillStyle = BG;
   g.fillRect(0, 0, W, H);
+  if (punched && punch > 0.01) {
+    A(0.06 * punch);
+    g.fillStyle = punched.kind === 'buy' ? POS : NEG;
+    g.fillRect(0, 0, W, H);
+    A(1);
+  }
   g.textBaseline = 'alphabetic';
 
   // the ticker
@@ -261,7 +384,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   // the counter
   if (playing && r < 1) {
     A(easeOut((time - T.hook) / 0.3) * (1 - r));
-    fit(g, v.money(running), L.counter.size, 650, L.counter.align === 'right' ? W - pad * 2 - sw - 260 : W - pad * 2);
+    fit(g, v.money(running), Math.round(L.counter.size * (1 + 0.1 * punch)), 650, L.counter.align === 'right' ? W - pad * 2 - sw - 260 : W - pad * 2);
     g.textAlign = L.counter.align;
     g.fillStyle = color;
     g.fillText(v.money(running), L.counter.x, L.counter.y);
@@ -279,89 +402,96 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     }
   }
 
-  // the chart
-  const { x0, x1, y0, y1 } = L.chart;
-  g.strokeStyle = LINE;
-  g.lineWidth = 2;
-  for (const k of [0.25, 0.5, 0.75]) {
+  // the chart: candles up to the playhead, the price axis on the right
+  const { x0, y0, y1 } = L.chart;
+  const px1 = geo.x1;
+  const big = f === 'portrait' ? 1.25 : 1;
+  const axisX = px1 + 22;
+  const tag = (p: number, fill: string, text: string) => {
+    font(g, Math.round(25 * big), 650);
+    const w = g.measureText(text).width + 22;
+    const h = 40 * big;
+    g.fillStyle = fill;
     g.beginPath();
-    g.moveTo(x0, y0 + (y1 - y0) * k);
-    g.lineTo(x1, y0 + (y1 - y0) * k);
-    g.stroke();
-  }
-  const path = (pts: readonly [number, number][]) => {
-    g.beginPath();
-    pts.forEach(([ts, pr], i) => (i ? g.lineTo(geo.X(ts), geo.Y(pr)) : g.moveTo(geo.X(ts), geo.Y(pr))));
+    g.roundRect(axisX - 8, geo.Y(p) - h / 2, w, h, 8);
+    g.fill();
+    g.fillStyle = '#ffffff';
+    g.textAlign = 'left';
+    g.fillText(text, axisX + 3, geo.Y(p) + 9 * big);
   };
-  g.lineJoin = 'round';
-  g.lineCap = 'round';
-  if (geo.s.length >= 2) {
-    path(geo.s);
-    g.strokeStyle = playing ? 'rgba(17,17,19,0.2)' : 'rgba(17,17,19,0.45)';
-    g.lineWidth = f === 'portrait' ? 4.5 : 3.5;
+  const shownTo = playing ? head : v.from;
+  const shown = upTo(v.candles, v.step, shownTo);
+  const nowPrice = shown.at(-1)?.[4] ?? geo.at(shownTo);
+  const tagYs = [geo.Y(nowPrice), ...(v.entry && v.entry > 0 ? [geo.Y(v.entry)] : [])];
+  const inView = (pr: number) => geo.Y(pr) >= y0 - 20 && geo.Y(pr) <= y1 + 20;
+  g.lineWidth = 2;
+  font(g, Math.round(24 * big), 500);
+  g.textAlign = 'left';
+  for (const t of geo.ticks) {
+    if (!inView(t)) continue;
+    g.strokeStyle = LINE;
+    g.beginPath();
+    g.moveTo(x0, geo.Y(t));
+    g.lineTo(px1, geo.Y(t));
     g.stroke();
+    if (tagYs.some((y) => Math.abs(y - geo.Y(t)) < 44 * big)) continue;
+    g.fillStyle = MUTED;
+    g.fillText(v.label(t * v.scale), axisX, geo.Y(t) + 8);
+  }
+  // the chart is cut to its frame, so candles the camera has left slide out of it
+  g.save();
+  g.beginPath();
+  g.rect(x0, y0 - 110, px1 - x0, y1 - y0 + 140);
+  g.clip();
+  if (punched && punch > 0.01) {
+    // the frame jolts in on the trade that just landed
+    const c = candleAt(v.candles, v.step, punched.ts);
+    const fx = geo.X(c ? c[0] + v.step / 2 : punched.ts);
+    const fy = geo.Y(punched.price);
+    const z = 1 + 0.06 * punch;
+    g.translate(fx, fy);
+    g.scale(z, z);
+    g.translate(-fx, -fy);
   }
   if (playing && head > v.from) {
-    const run = geo.points(v.from, head);
-    path(run);
-    g.lineTo(geo.X(head), y1);
-    g.lineTo(geo.X(v.from), y1);
-    g.closePath();
-    const grad = g.createLinearGradient(0, y0, 0, y1);
-    grad.addColorStop(0, color === POS ? 'rgba(22,163,74,0.2)' : color === NEG ? 'rgba(220,38,38,0.18)' : 'rgba(17,17,19,0.1)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = grad;
-    g.fill();
-    path(run);
-    g.strokeStyle = color;
-    g.lineWidth = f === 'portrait' ? 9 : 7;
-    g.stroke();
+    A(0.06);
+    g.fillStyle = color;
+    g.fillRect(geo.X(v.from), y0 - 110, geo.X(head) - geo.X(v.from), y1 - y0 + 140);
+    A(1);
+  }
+  drawCandles(g, shown, v.step, geo.X, geo.Y, { up: POS, down: NEG, body: 0.68 });
 
-    // trades pop as the playhead reaches them
+  // trades pop as the playhead reaches them, buys under their candle and sells over it
+  if (playing) {
     for (const m of v.markers) {
       if (m.ts > head || m.ts < geo.t0) continue;
       const k = easeBack((time - timeOf(Math.max(m.ts, v.from), v, l)) / 0.3);
-      drawMarker(g, geo.X(m.ts), geo.Y(m.price), m, k, f === 'portrait' ? 1.25 : 1);
+      const c = candleAt(v.candles, v.step, m.ts);
+      const buy = m.kind === 'buy';
+      const py = buy ? geo.Y(Math.min(c?.[3] ?? m.price, m.price)) : geo.Y(Math.max(c?.[2] ?? m.price, m.price));
+      drawMarker(g, geo.X(c ? c[0] + v.step / 2 : m.ts), py, m, k, big);
     }
+  }
+  g.restore();
 
-    // the playhead
-    if (p < 1) {
-      const hx = geo.X(head);
-      const hy = geo.Y(geo.at(head));
-      g.setLineDash([8, 10]);
-      g.strokeStyle = color;
-      A(0.4);
-      g.lineWidth = 2;
-      g.beginPath();
-      g.moveTo(hx, y0 - 10);
-      g.lineTo(hx, y1);
-      g.stroke();
-      g.setLineDash([]);
-      A(0.18 + 0.12 * Math.sin(time * 9));
-      g.fillStyle = color;
-      g.beginPath();
-      g.arc(hx, hy, 34, 0, Math.PI * 2);
-      g.fill();
-      A(1);
-      g.fillStyle = color;
-      g.strokeStyle = '#ffffff';
-      g.lineWidth = 6;
-      g.beginPath();
-      g.arc(hx, hy, 15, 0, Math.PI * 2);
-      g.fill();
-      g.stroke();
-      font(g, f === 'portrait' ? 34 : 26, 500);
-      g.fillStyle = MUTED;
-      const right = hx > (x0 + x1) / 2;
-      g.textAlign = right ? 'right' : 'left';
-      g.fillText(v.date(head), hx + (right ? -16 : 16), y1 + (f === 'portrait' ? 60 : 46));
-    }
+  if (v.entry && v.entry > 0 && inView(v.entry) && Math.abs(geo.Y(v.entry) - geo.Y(nowPrice)) > 44 * big) tag(v.entry, INK2, v.label(v.entry * v.scale));
+  tag(nowPrice, playing ? color : INK, v.label(nowPrice * v.scale));
+
+  // the playhead's date, under the chart
+  if (playing && head > v.from && p < 1) {
+    const hx = geo.X(head);
+    font(g, f === 'portrait' ? 34 : 26, 500);
+    g.fillStyle = MUTED;
+    const right = hx > (x0 + px1) / 2;
+    g.textAlign = right ? 'right' : 'left';
+    g.fillText(v.date(head), hx + (right ? -16 : 16), y1 + (f === 'portrait' ? 60 : 46));
   }
 
   // the reveal
   if (r > 0) {
     A(1);
-    g.fillStyle = `rgba(255,255,255,${0.95 * r})`;
+    A(0.95 * r);
+    g.fillStyle = BG;
     g.fillRect(0, L.headerY + 30, W, H - L.headerY - 30);
     drawReveal(g, v, L, r, time, T, alpha);
   }
@@ -381,33 +511,31 @@ function drawPill(g: CanvasRenderingContext2D, x: number, y: number, text: strin
   g.fillText(text, x + size * 0.55, y + size * 0.05);
 }
 
+/** A trade on its candle: an arrow and a pill, under the candle for a buy and over it for a sell. */
 function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker, k: number, scale: number) {
   if (k <= 0) return;
+  const buy = m.kind === 'buy';
+  const dir = buy ? 1 : -1;
   g.save();
-  g.translate(x, y);
+  g.translate(x, y + dir * 12 * scale);
   g.scale(k * scale, k * scale);
-  g.fillStyle = m.kind === 'buy' ? POS : NEG;
-  g.strokeStyle = '#ffffff';
-  g.lineWidth = 5;
+  g.fillStyle = buy ? POS : NEG;
   g.beginPath();
-  if (m.label) {
-    font(g, 26, 650);
-    const w = g.measureText(m.label).width + 32;
-    g.roundRect(-w / 2, -22, w, 44, 22);
-    g.fill();
-    g.stroke();
-    g.fillStyle = '#ffffff';
-    g.textAlign = 'center';
-    g.fillText(m.label, 0, 9);
-  } else {
-    g.arc(0, 0, 13, 0, Math.PI * 2);
-    g.fill();
-    g.stroke();
-    font(g, 16, 700);
-    g.fillStyle = '#ffffff';
-    g.textAlign = 'center';
-    g.fillText(m.kind === 'buy' ? 'B' : 'S', 0, 6);
-  }
+  g.moveTo(0, 0);
+  g.lineTo(-13, dir * 18);
+  g.lineTo(13, dir * 18);
+  g.closePath();
+  g.fill();
+  const text = m.label ?? (buy ? 'BUY' : 'SELL');
+  font(g, 24, 700);
+  const w = g.measureText(text).width + 26;
+  const top = buy ? 24 : -24 - 40;
+  g.beginPath();
+  g.roundRect(-w / 2, top, w, 40, 10);
+  g.fill();
+  g.fillStyle = '#ffffff';
+  g.textAlign = 'center';
+  g.fillText(text, 0, top + 29);
   g.restore();
 }
 
@@ -436,7 +564,7 @@ function drawReveal(g: CanvasRenderingContext2D, v: ReplayVideo, L: Layout, r: n
     const fits = pad + pw + 30 + rw <= W - pad;
     const rx = fits ? pad + pw + 30 : pad;
     const ry = fits ? pnlY - rs * 1.45 : pnlY + rs * 0.6;
-    g.fillStyle = v.pnl > 0 ? '#ecfdf3' : v.pnl < 0 ? '#fef2f2' : SUBTLE;
+    g.fillStyle = v.pnl > 0 ? X_LIGHT.posWash : v.pnl < 0 ? X_LIGHT.negWash : SUBTLE;
     g.beginPath();
     g.roundRect(rx, ry, rw, rs * 1.6, rs * 0.3);
     g.fill();
@@ -504,7 +632,7 @@ export function soundCues(v: ReplayVideo, l: VideoLength): Cue[] {
   const geo = geometry(v, layout('square'));
   const cues: Cue[] = [{ t: 0.02, kind: 'hook' }];
   for (let t = T.hook; t < T.play; t += l === 'story' ? 0.16 : 0.11) {
-    const head = v.from + (v.to - v.from) * playAt(t, l);
+    const head = v.from + (v.to - v.from) * playAt(t, l, v);
     cues.push({ t, kind: 'tick', pitch: geo.level(geo.at(head)) });
   }
   for (const m of v.markers) if (m.ts <= v.to) cues.push({ t: timeOf(Math.max(m.ts, v.from), v, l), kind: m.kind });

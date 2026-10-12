@@ -14,7 +14,7 @@ export function VideoExport({ video, fileBase, className }: { video: ReplayVideo
   const close = useCallback(() => setOpen(false), []);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className={cx('btn btn-quiet', className)}>
+      <button type="button" onClick={() => setOpen(true)} className={cx('btn', className ?? 'btn-quiet')}>
         <Clapperboard className="size-4" aria-hidden /> Video
       </button>
       <Sheet open={open} onClose={close} title="Make a video" wide>

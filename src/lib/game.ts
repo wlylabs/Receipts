@@ -21,19 +21,9 @@ export function stampOf(pnl: number): { text: string; tone: Tone } {
 }
 
 export const KEYS = {
-  streak: 'receipts:streak',
   recent: 'receipts:recent',
   best: (mint: string) => `receipts:best:${mint}`,
 };
-
-export interface Streak {
-  current: number;
-  best: number;
-  calls: number;
-  right: number;
-}
-
-export const NO_STREAK: Streak = { current: 0, best: 0, calls: 0, right: 0 };
 
 export interface Recent {
   kind: 'trader' | 'token' | 'wallet';

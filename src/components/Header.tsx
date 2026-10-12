@@ -13,9 +13,6 @@ export function Header() {
           <Link href="/#paste" className="rounded-lg px-3 py-2 text-muted transition-colors hover:bg-hover hover:text-ink">
             Paste
           </Link>
-          <Link href="/#book" className="rounded-lg px-3 py-2 text-muted transition-colors hover:bg-hover hover:text-ink">
-            My trades
-          </Link>
         </nav>
       </div>
     </header>

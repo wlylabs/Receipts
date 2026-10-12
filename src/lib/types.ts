@@ -1,3 +1,5 @@
+import type { Candle } from './candles';
+
 /** A DexScreener pair, only the fields Receipts reads. */
 export interface DsPair {
   chainId: string;
@@ -137,6 +139,8 @@ export interface TraderReceipts {
   /** The wallet's trades, oldest first, as [ts, side, tokens, usd, priceUsd, tx]. */
   trades: [number, 'buy' | 'sell', number, number, number, string][];
   series: [number, number][];
+  /** The same stretch as OHLC candles, oldest first. */
+  candles: Candle[];
   candle: string;
   window: Window;
   /** Where this wallet ranks among the window's traders, 1 is the top. */

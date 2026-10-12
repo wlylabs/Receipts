@@ -1,16 +1,14 @@
 import { History, LineChart } from 'lucide-react';
 import { Omnibox } from '../components/Omnibox';
-import { Trending } from '../components/Trending';
-import { PaperBook } from '../components/PaperBook';
 
 export default function HomePage() {
   return (
     <div className="mx-auto max-w-6xl px-4 sm:px-6">
       <section className="mx-auto max-w-2xl pb-10 pt-12 text-center sm:pt-20" aria-labelledby="hero">
         <h1 id="hero" className="text-[34px] font-semibold leading-[1.08] tracking-[-0.03em] sm:text-[52px]">
-          Paper-trade any token.
+          Replay any wallet.
           <br />
-          <span className="text-muted">Replay any wallet.</span>
+          <span className="text-muted">Make the video.</span>
         </h1>
         <p className="mx-auto mt-4 max-w-lg text-[15px] leading-relaxed text-ink-2 sm:text-base">
           Real charts, real wallets, pretend money. Solana, Ethereum, Base, BNB, Arbitrum, Polygon, Avalanche and Optimism.
@@ -19,15 +17,10 @@ export default function HomePage() {
           <Omnibox />
         </div>
         <div className="mt-4 grid gap-2 text-left sm:grid-cols-2">
-          <Mode icon={<LineChart className="size-4" />} title="Token CA" body="Buy at any candle since launch, sell later or hold to now, watch it replay and rank against its real traders." />
-          <Mode icon={<History className="size-4" />} title="Wallet address" body="Pick a token they traded, call it profit or rekt, then watch their trades replay on the chart." />
+          <Mode icon={<LineChart className="size-4" />} title="Token CA" body="See its top 3 gainers and biggest losers, then pick one to replay and turn into a video." />
+          <Mode icon={<History className="size-4" />} title="Wallet address" body="Pick a token they traded, watch their trades replay on the chart, then turn it into a video." />
         </div>
       </section>
-
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <Trending />
-        <PaperBook />
-      </div>
     </div>
   );
 }

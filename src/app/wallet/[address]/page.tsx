@@ -7,7 +7,7 @@ type Props = { params: Promise<{ address: string }>; searchParams: Promise<{ ca?
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { address } = await params;
   const title = `Replay ${short(address)}`;
-  const description = `Call it, then watch it replay: is ${short(address)} up or down? Real trades, priced in USD.`;
+  const description = `Watch ${short(address)}’s real trades replay on the chart, priced in USD, and turn them into a video.`;
   return { title, description, openGraph: { title, description }, robots: { index: false } };
 }
 

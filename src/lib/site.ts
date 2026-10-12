@@ -15,9 +15,9 @@ export function siteUrl(raw: string | undefined): string {
     return 'https://receipts.vercel.app';
   }
 }
-export const SITE_TITLE = 'Receipts — paper-trade any token, replay any wallet';
+export const SITE_TITLE = 'Receipts — replay any wallet, make the video';
 export const SITE_DESCRIPTION =
-  'Paste a token CA to paper-trade its real chart and see where you would rank among its traders, or paste a wallet, call it profit or rekt, and watch its real trades replay on the chart.';
+  'Paste a token CA to see its top gainers and biggest losers, or paste a wallet, then watch its real trades replay on the chart and turn them into a video.';
 
 export const ROUTES = {
   home: '/',

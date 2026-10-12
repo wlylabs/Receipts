@@ -2,11 +2,13 @@ import 'server-only';
 import { candles, findPair, onOtherChain, poolTrades, timeframeFor } from './upstream';
 import { isAddress, toSeries, toTokenInfo, toTrades } from './receipts';
 import { SUPPORTED } from './chains';
+import { toCandles, type Candle } from './candles';
 import type { ApiError, TokenInfo, Trade } from './types';
 
 export interface Loaded {
   token: TokenInfo;
   series: [number, number][];
+  candles: Candle[];
   candle: string;
   ath: { ts: number; priceUsd: number };
   highs: [number, number][];
@@ -29,5 +31,5 @@ export async function loadToken(address: string): Promise<LoadResult> {
   const tf = timeframeFor(age);
   const [ohlcv, raw] = await Promise.all([candles(token.chain, token.pair, token.address, tf), poolTrades(token.chain, token.pair)]);
   const { series, ath, highs } = toSeries(ohlcv);
-  return { ok: true, value: { token, series, candle: tf.label, ath, highs, trades: toTrades(raw, token.address) } };
+  return { ok: true, value: { token, series, candles: toCandles(ohlcv), candle: tf.label, ath, highs, trades: toTrades(raw, token.address) } };
 }

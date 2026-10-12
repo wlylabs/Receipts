@@ -11,7 +11,7 @@ import { cx } from '../lib/cx';
 import type { ApiError, Resolved } from '../lib/types';
 
 /**
- * One box for both games: a token CA opens the paper trade, a wallet opens the replay of its trades. What
+ * One box for both: a token CA opens its top traders, a wallet opens the replay of its trades. What
  * was pasted is asked of DexScreener, so nobody has to say which it is.
  */
 export function Omnibox({ autoFocus = false, size = 'lg' }: { autoFocus?: boolean; size?: 'lg' | 'sm' }) {
