@@ -33,7 +33,6 @@ export function ReplayChart({
   tone,
   bubble,
   athTs,
-  hideRun = false,
   className,
 }: {
   series: readonly [number, number][];
@@ -47,8 +46,6 @@ export function ReplayChart({
   /** Text in the bubble riding the playhead, e.g. the running P&L. */
   bubble?: string;
   athTs?: number;
-  /** Draw only the price line, nothing about the run (before a call is made). */
-  hideRun?: boolean;
   className?: string;
 }) {
   const gid = useId().replace(/:/g, '');
@@ -99,7 +96,7 @@ export function ReplayChart({
   const runFrom = from ?? geo.t0;
   const runTo = to ?? series.at(-1)![0];
   const playhead = head === undefined ? runTo : Math.min(runTo, Math.max(runFrom, head));
-  const showRun = !hideRun && playhead > runFrom;
+  const showRun = playhead > runFrom;
   const run = showRun ? geo.path(runFrom, playhead) : null;
   const runArea = run ? `${run}L${geo.x(playhead).toFixed(1)},${VH}L${geo.x(runFrom).toFixed(1)},${VH}Z` : null;
   const color = tone === 'pos' ? 'var(--pos)' : tone === 'neg' ? 'var(--neg)' : 'var(--ink)';
@@ -136,22 +133,21 @@ export function ReplayChart({
         </span>
       )}
 
-      {!hideRun &&
-        markers
-          .filter((m) => m.ts >= geo.t0 && m.ts <= playhead + 1)
-          .map((m, i) => (
-            <span
-              key={`${m.ts}:${i}`}
-              className={cx(
-                'pop-in absolute grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-[var(--surface)] font-semibold leading-none text-white shadow-sm',
-                m.label ? 'h-5 px-1.5 text-[9.5px]' : 'size-4 text-[8px]',
-                m.kind === 'buy' ? 'bg-pos' : 'bg-neg',
-              )}
-              style={{ left: `${(geo.x(m.ts) / VW) * 100}%`, top: `${(geo.y(m.price) / VH) * 100}%` }}
-            >
-              {m.label ?? (m.kind === 'buy' ? 'B' : 'S')}
-            </span>
-          ))}
+      {markers
+        .filter((m) => m.ts >= geo.t0 && m.ts <= playhead + 1)
+        .map((m, i) => (
+          <span
+            key={`${m.ts}:${i}`}
+            className={cx(
+              'pop-in absolute grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-2 border-[var(--surface)] font-semibold leading-none text-white shadow-sm',
+              m.label ? 'h-5 px-1.5 text-[9.5px]' : 'size-4 text-[8px]',
+              m.kind === 'buy' ? 'bg-pos' : 'bg-neg',
+            )}
+            style={{ left: `${(geo.x(m.ts) / VW) * 100}%`, top: `${(geo.y(m.price) / VH) * 100}%` }}
+          >
+            {m.label ?? (m.kind === 'buy' ? 'B' : 'S')}
+          </span>
+        ))}
 
       {showRun && (
         <>
