@@ -54,17 +54,12 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
   const chain = CHAINS[token.chain];
   const trades: Trade[] = useMemo(() => r.trades.map(([ts, side, tokens, u, pr, tx]) => ({ ts, side, tokens, usd: u, priceUsd: pr, tx, trader: r.owner })), [r]);
 
-  // the replay runs from the wallet's first trade to now, the chart zoomed in on that stretch
+  // the replay runs from the wallet's first trade to now, over the token's whole history
+  const series = full;
   const from = Math.max(full[0]?.[0] ?? 0, (trades[0]?.ts ?? 0) - 60);
   const to = Math.max(full.at(-1)?.[0] ?? 0, trades.at(-1)?.ts ?? 0);
-  const series = useMemo(() => {
-    const lead = from - (to - from) * 0.2;
-    const view = full.filter(([ts]) => ts >= lead);
-    return view.length >= 12 ? view : full.slice(-12);
-  }, [full, from, to]);
-  // the same stretch in candles, merged down to a count that stays readable on a phone
-  const chart = useMemo(() => bucket(r.candles.filter(([ts]) => ts >= series[0]![0]), CANDLES), [r.candles, series]);
-  const entry = p.tokensIn > 0 ? p.usdIn / p.tokensIn : undefined;
+  // every candle since launch, merged down to a count that stays readable on a phone
+  const chart = useMemo(() => bucket(r.candles, CANDLES), [r.candles]);
   // DEX traders read market cap more than price: the supply turns one into the other
   const supply = token.mcapUsd && token.priceUsd > 0 ? token.mcapUsd / token.priceUsd : 0;
   const scale = supply || 1;
@@ -108,7 +103,6 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     series,
     candles: chart.candles,
     step: chart.step,
-    entry,
     from,
     to,
     markers: markers.length <= 60 ? markers : [],
@@ -157,7 +151,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
               <span className="min-w-0">
                 <span className="block truncate text-[14px] font-semibold">{token.symbol}</span>
                 <span className="block truncate text-[12px] text-muted">
-                  {supply ? `MC ${mcap(token.mcapUsd)}` : price(token.priceUsd)} · {r.candle} candles
+                  {supply ? `MC ${mcap(token.mcapUsd)}` : price(token.priceUsd)} · all-time chart
                 </span>
               </span>
             </Link>
@@ -171,7 +165,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
             </div>
           </div>
           <div className="relative mt-3">
-            <ReplayChart candles={chart.candles} step={chart.step} entry={entry} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
+            <ReplayChart candles={chart.candles} step={chart.step} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
           </div>
 
           {done && (

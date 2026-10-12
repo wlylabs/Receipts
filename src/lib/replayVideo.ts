@@ -55,8 +55,6 @@ export interface ReplayVideo {
   /** The chart as candles over the same stretch, `step` seconds each. */
   candles: readonly Candle[];
   step: number;
-  /** The average buy, tagged on the axis; none when there were no buys. */
-  entry?: number;
   from: number;
   to: number;
   markers: Marker[];
@@ -250,7 +248,7 @@ function fullView(v: ReplayVideo): View {
   const c = v.candles;
   const ta = c[0]?.[0] ?? s[0]?.[0] ?? v.from;
   const tb = Math.max((c.at(-1)?.[0] ?? s.at(-1)?.[0] ?? v.to) + (c.length ? v.step : 0), v.to);
-  const { lo, hi } = range(c, [...s.map(([, p]) => p), ...v.markers.filter((m) => m.ts >= ta).map((m) => m.price), v.entry ?? 0]);
+  const { lo, hi } = range(c, [...s.map(([, p]) => p), ...v.markers.filter((m) => m.ts >= ta).map((m) => m.price)]);
   return { ta, tb, llo: Math.log(lo), lhi: Math.log(hi) };
 }
 
@@ -381,9 +379,12 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   g.fillStyle = MUTED;
   g.fillText(v.chainName, pad + sw + 22, L.headerY);
 
+  // the counter, the caption and the date clear away just before the reveal comes in, so the two never overlap
+  const out = 1 - easeOut((time - (T.play - 0.25)) / 0.35);
+
   // the counter
-  if (playing && r < 1) {
-    A(easeOut((time - T.hook) / 0.3) * (1 - r));
+  if (playing && out > 0) {
+    A(easeOut((time - T.hook) / 0.3) * out);
     fit(g, v.money(running), Math.round(L.counter.size * (1 + 0.1 * punch)), 650, L.counter.align === 'right' ? W - pad * 2 - sw - 260 : W - pad * 2);
     g.textAlign = L.counter.align;
     g.fillStyle = color;
@@ -392,11 +393,11 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   }
 
   // the latest caption, in the story cut
-  if (l === 'story' && playing && r < 1) {
+  if (l === 'story' && playing && out > 0) {
     let cap: Caption | null = null;
     for (const c of v.captions) if (c.ts <= head) cap = c;
     if (cap) {
-      A(clamp01((time - timeOf(Math.max(cap.ts, v.from), v, l)) / 0.25) * (1 - r));
+      A(clamp01((time - timeOf(Math.max(cap.ts, v.from), v, l)) / 0.25) * out);
       drawPill(g, L.caption.x, L.caption.y, cap.text, L.caption.size, cap.tone === 'pos' ? POS : cap.tone === 'neg' ? NEG : INK, W - pad * 2);
       A(1);
     }
@@ -422,7 +423,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   const shownTo = playing ? head : v.from;
   const shown = upTo(v.candles, v.step, shownTo);
   const nowPrice = shown.at(-1)?.[4] ?? geo.at(shownTo);
-  const tagYs = [geo.Y(nowPrice), ...(v.entry && v.entry > 0 ? [geo.Y(v.entry)] : [])];
+  const tagYs = [geo.Y(nowPrice)];
   const inView = (pr: number) => geo.Y(pr) >= y0 - 20 && geo.Y(pr) <= y1 + 20;
   g.lineWidth = 2;
   font(g, Math.round(24 * big), 500);
@@ -453,12 +454,6 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.scale(z, z);
     g.translate(-fx, -fy);
   }
-  if (playing && head > v.from) {
-    A(0.06);
-    g.fillStyle = color;
-    g.fillRect(geo.X(v.from), y0 - 110, geo.X(head) - geo.X(v.from), y1 - y0 + 140);
-    A(1);
-  }
   drawCandles(g, shown, v.step, geo.X, geo.Y, { up: POS, down: NEG, body: 0.68 });
 
   // trades pop as the playhead reaches them, buys under their candle and sells over it
@@ -474,17 +469,16 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   }
   g.restore();
 
-  if (v.entry && v.entry > 0 && inView(v.entry) && Math.abs(geo.Y(v.entry) - geo.Y(nowPrice)) > 44 * big) tag(v.entry, INK2, v.label(v.entry * v.scale));
   tag(nowPrice, playing ? color : INK, v.label(nowPrice * v.scale));
 
-  // the playhead's date, under the chart
-  if (playing && head > v.from && p < 1) {
-    const hx = geo.X(head);
+  // the playhead's date, held in one place under the chart and faded in
+  if (playing && out > 0) {
+    A(easeOut((time - T.hook) / 0.3) * out);
     font(g, f === 'portrait' ? 34 : 26, 500);
     g.fillStyle = MUTED;
-    const right = hx > (x0 + px1) / 2;
-    g.textAlign = right ? 'right' : 'left';
-    g.fillText(v.date(head), hx + (right ? -16 : 16), y1 + (f === 'portrait' ? 60 : 46));
+    g.textAlign = 'left';
+    g.fillText(v.date(head), x0, y1 + (f === 'portrait' ? 60 : 46));
+    A(1);
   }
 
   // the reveal
