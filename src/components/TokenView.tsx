@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowUpRight, Download, FastForward, Link2, Loader2, Play, RotateCcw } from 'lucide-react';
+import { ArrowUpRight, Copy, Download, FastForward, Link2, Loader2, Play, RotateCcw } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { useReplay } from '../hooks/useReplay';
@@ -13,7 +13,7 @@ import { MAX_PAPER, PAPER_KEY, paperPnl, type PaperTrade } from '../lib/paper';
 import type { TokenReceipts } from '../lib/types';
 import { compact, day, parseAmount, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_URL } from '../lib/site';
-import { saveFile, shareLink } from '../lib/clipboard';
+import { copyText, saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import { Failure, Loading } from './States';
@@ -575,9 +575,20 @@ function Board({ r, mine, children }: { r: TokenReceipts; mine: number; children
                     <span className="text-muted">{r.board.indexOf(row) + 1}</span>
                   </Td>
                   <Td>
-                    <Link href={ROUTES.trader(row.trader, r.token.address)} className="font-medium underline-offset-2 hover:underline">
-                      {short(row.trader)}
-                    </Link>
+                    <span className="inline-flex items-center gap-1">
+                      <Link href={ROUTES.trader(row.trader, r.token.address)} className="font-medium underline-offset-2 hover:underline">
+                        {short(row.trader)}
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={async () => toast((await copyText(row.trader)) ? 'Address copied.' : 'Couldn’t copy the address.')}
+                        aria-label={`Copy ${row.trader}`}
+                        title="Copy address"
+                        className="-my-1 grid size-7 place-items-center rounded-md text-muted hover:bg-subtle hover:text-ink"
+                      >
+                        <Copy className="size-3.5" aria-hidden />
+                      </button>
+                    </span>
                   </Td>
                   <Td right wide>
                     {row.trades}
