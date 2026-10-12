@@ -12,6 +12,7 @@ import { date, mcap, pct, price, short, span, usd } from '../lib/format';
 import { stepOf } from '../lib/candles';
 import { marketOf } from '../lib/market';
 import { traderStory } from '../lib/traderVideo';
+import { marketStory } from '../lib/marketVideo';
 import type { ReplayVideo } from '../lib/replayVideo';
 import { supplyOf } from '../lib/receipts';
 import { ROUTES } from '../lib/site';
@@ -21,7 +22,7 @@ import { cx } from '../lib/cx';
 import { Failure, Loading } from './States';
 import { TokenImage } from './TokenImage';
 import { ReplayChart } from './ReplayChart';
-import { VideoSheet } from './VideoExport';
+import { VideoExport, VideoSheet } from './VideoExport';
 
 /** Wallets shown on each side of the board. */
 const SIDE = 3;
@@ -39,7 +40,7 @@ export function TokenView({ ca }: { ca: string }) {
   return <TokenPage r={state.data} />;
 }
 
-/** The token's market right now and its every candle, then its top 3 winners and losers to copy or turn into a video. */
+/** The token's market right now and its every candle (as a video too), then its top 3 winners and losers to copy or turn into a video. */
 function TokenPage({ r }: { r: TokenReceipts }) {
   const { token } = r;
   const [now] = useState(() => Date.now() / 1000);
@@ -48,6 +49,8 @@ function TokenPage({ r }: { r: TokenReceipts }) {
   const cap = (p: number) => (supply ? mcap(p * supply) : price(p));
   // every candle the feed has since launch, none merged
   const chart = useMemo(() => ({ candles: r.candles, step: stepOf(r.candles) }), [r.candles]);
+  // the same history as a video, launch to now
+  const film = useMemo(() => marketStory(r, now), [r, now]);
   const market = marketOf({ priceUsd: token.priceUsd, athUsd: r.ath.priceUsd, change24h: token.change24h, buys: r.window.buys, sells: r.window.sells });
   const winners = r.board.filter((w) => w.pnl > 0).slice(0, SIDE);
   const losers = r.board.filter((w) => w.pnl < 0).reverse().slice(0, SIDE);
@@ -124,7 +127,8 @@ function TokenPage({ r }: { r: TokenReceipts }) {
           <span>Launched {date(token.createdAt ?? chart.candles[0]?.[0] ?? now)}</span>
           <span>Now</span>
         </div>
-        <div className="mt-2 flex justify-end">
+        <div className="mt-2 flex items-center justify-between gap-3">
+          {film ? <VideoExport video={film.video} fileBase={film.fileBase} title={`Video · ${token.symbol} since launch`} className="btn-primary h-9 min-h-0 px-3 text-[12.5px]" /> : <span />}
           <a href={token.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[12.5px] text-muted hover:text-ink">
             DexScreener <ArrowUpRight className="size-3.5" aria-hidden />
           </a>

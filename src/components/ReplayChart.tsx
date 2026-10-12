@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { candleAt, logTicks, range, upTo, type Candle } from '../lib/candles';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { bucket, candleAt, logTicks, range, upTo, type Candle } from '../lib/candles';
 import { cx } from '../lib/cx';
 
 export interface Marker {
@@ -16,17 +16,19 @@ const VW = 1000;
 const VH = 420;
 const PAD_TOP = 48;
 const PAD_BOTTOM = 44;
+/** Narrowest a candle may be on screen, in pixels: thinner ones blur into grey dots, so neighbours merge. */
+const MIN_PX = 3;
 
 /**
  * A token's candles on a log scale (memecoins move in multiples), the way DexScreener and
  * TradingView draw them, with a playhead. Candles after the playhead are not drawn yet and the
  * one under it grows; buys pop in under their candle and sells over it. With no playhead the
  * whole run shows at once. The price axis, its tags and the markers are HTML on top so they stay
- * crisp at any width.
+ * crisp at any width. Candles merge when there are more than the chart's width holds.
  */
 export function ReplayChart({
-  candles,
-  step,
+  candles: all,
+  step: allStep,
   from,
   to,
   head,
@@ -55,6 +57,21 @@ export function ReplayChart({
   label: (v: number) => string;
   className?: string;
 }) {
+  // the plot's width on screen, so candles never get thinner than MIN_PX
+  const plot = useRef<HTMLDivElement>(null);
+  const [px, setPx] = useState(0);
+  useEffect(() => {
+    const el = plot.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setPx(Math.round(e!.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const { candles, step } = useMemo(() => {
+    const max = Math.max(20, Math.floor(px / MIN_PX));
+    return px && all.length > max ? bucket(all, max) : { candles: all, step: allStep };
+  }, [all, allStep, px]);
+
   const geo = useMemo(() => {
     if (candles.length < 2) return null;
     const t0 = candles[0]![0];
@@ -85,7 +102,7 @@ export function ReplayChart({
 
   return (
     <div className={cx('relative flex aspect-[5/2] w-full select-none', className)}>
-      <div className="relative min-w-0 flex-1">
+      <div ref={plot} className="relative min-w-0 flex-1">
         <svg viewBox={`0 0 ${VW} ${VH}`} preserveAspectRatio="none" className="absolute inset-0 size-full overflow-visible" aria-hidden>
           {geo.ticks.map((p) => (
             <line key={p} x1="0" x2={VW} y1={geo.y(p)} y2={geo.y(p)} stroke="var(--line)" vectorEffect="non-scaling-stroke" />
