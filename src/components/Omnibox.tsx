@@ -3,50 +3,77 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, ClipboardPaste, Loader2, Search, X } from 'lucide-react';
-import { cleanAddress, isAddress } from '../lib/receipts';
+import { cleanAddress, isAddress, isWallet } from '../lib/receipts';
+import { useStored } from '../hooks/useStored';
+import { KEYS } from '../lib/game';
 import { readClipboard } from '../lib/clipboard';
 import { ROUTES } from '../lib/site';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import type { ApiError, Resolved } from '../lib/types';
 
+export type PasteKind = 'token' | 'wallet';
+
+const COPY: Record<PasteKind, { label: string; placeholder: string; empty: string; bad: string }> = {
+  token: { label: 'Token CA', placeholder: 'Paste a token CA', empty: 'Paste a token CA.', bad: 'That doesn’t look like a Solana or 0x token address.' },
+  wallet: { label: 'Wallet', placeholder: 'Paste a wallet address', empty: 'Paste a wallet address.', bad: 'That doesn’t look like a Solana or 0x wallet address.' },
+};
+
 /**
- * One box for both: a token CA opens its top traders, a wallet opens the replay of its trades. What
- * was pasted is asked of DexScreener, so nobody has to say which it is.
+ * The paste box, with the choice of what is pasted: a token CA opens its top traders, a wallet
+ * opens the replay of its trades. People say which; a wallet is still asked of DexScreener, so a
+ * token pasted there is caught instead of opening as an empty wallet.
  */
 export function Omnibox({ autoFocus = false, size = 'lg', initial = '', onGo }: { autoFocus?: boolean; size?: 'lg' | 'sm'; initial?: string; onGo?: () => void }) {
   const router = useRouter();
+  const [kind, setKind] = useStored<PasteKind>(KEYS.pasteKind, 'token');
   const [value, setValue] = useState(initial);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ text: string; switchTo?: PasteKind } | null>(null);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const copy = COPY[kind];
 
-  const go = async (raw: string) => {
+  const pick = (k: PasteKind) => {
+    setKind(k);
+    setError(null);
+    input.current?.focus();
+  };
+
+  const go = async (raw: string, as: PasteKind = kind) => {
     const a = cleanAddress(raw);
     if (!a) {
-      setError('Paste a token CA or a wallet address.');
+      setError({ text: COPY[as].empty });
       input.current?.focus();
       return;
     }
-    if (!isAddress(a)) {
-      setError('That doesn’t look like a Solana or 0x address.');
+    if (as === 'token' ? !isAddress(a) : !isWallet(a)) {
+      setError({ text: COPY[as].bad });
       input.current?.focus();
       return;
     }
     setError(null);
+    if (as === 'token') {
+      // the token page says itself when there is no pair or its chain isn't played
+      router.push(ROUTES.token(a));
+      onGo?.();
+      return;
+    }
     setBusy(true);
     try {
       const res = await fetch(`/api/resolve/${encodeURIComponent(a)}/`);
       const body = (await res.json()) as Resolved | ApiError;
-      if (!res.ok || !('kind' in body)) throw new Error('error' in body ? body.error : 'resolve');
-      router.push(body.kind === 'token' ? ROUTES.token(body.address) : ROUTES.wallet(body.address));
-      // the page stays; it shows the result under the box
-      setBusy(false);
-      onGo?.();
-    } catch (e) {
-      setBusy(false);
-      setError((e as Error).message === 'resolve' ? 'Couldn’t check that address. Try again.' : (e as Error).message);
+      if (('kind' in body && body.kind === 'token') || ('code' in body && body.code === 'unsupported')) {
+        setBusy(false);
+        setError({ text: 'That’s a token CA, not a wallet.', switchTo: 'token' });
+        return;
+      }
+    } catch {
+      // the check is a courtesy: if it fails, open the wallet as asked
     }
+    router.push(ROUTES.wallet(a));
+    // the page stays; it shows the result under the box
+    setBusy(false);
+    onGo?.();
   };
 
   const paste = async () => {
@@ -60,6 +87,11 @@ export function Omnibox({ autoFocus = false, size = 'lg', initial = '', onGo }: 
     void go(text);
   };
 
+  const switchAndGo = (to: PasteKind) => {
+    setKind(to);
+    void go(value, to);
+  };
+
   const submit = (e: FormEvent) => {
     e.preventDefault();
     void go(value);
@@ -68,8 +100,22 @@ export function Omnibox({ autoFocus = false, size = 'lg', initial = '', onGo }: 
   const lg = size === 'lg';
   return (
     <form onSubmit={submit} noValidate>
+      <div role="radiogroup" aria-label="What are you pasting?" className={cx('mb-2 inline-flex rounded-[10px] bg-subtle p-0.5', lg ? 'text-[13.5px]' : 'text-[13px]')}>
+        {(Object.keys(COPY) as PasteKind[]).map((k) => (
+          <button
+            key={k}
+            type="button"
+            role="radio"
+            aria-checked={kind === k}
+            onClick={() => pick(k)}
+            className={cx('min-h-9 rounded-lg px-3.5 font-medium transition-colors', kind === k ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]' : 'text-muted hover:text-ink')}
+          >
+            {COPY[k].label}
+          </button>
+        ))}
+      </div>
       <label htmlFor="omnibox" className="sr-only">
-        Token CA or wallet address
+        {copy.label}
       </label>
       <div className={cx('field pl-3.5 pr-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]', lg ? 'h-14 rounded-[14px]' : 'h-11', error && 'border-neg')}>
         <Search className="size-4 shrink-0 text-faint" aria-hidden />
@@ -88,7 +134,7 @@ export function Omnibox({ autoFocus = false, size = 'lg', initial = '', onGo }: 
             setValue(cleanAddress(text));
             void go(text);
           }}
-          placeholder="Paste a token CA or a wallet address"
+          placeholder={copy.placeholder}
           autoFocus={autoFocus}
           autoComplete="off"
           autoCorrect="off"
@@ -121,7 +167,15 @@ export function Omnibox({ autoFocus = false, size = 'lg', initial = '', onGo }: 
       </div>
       {error && (
         <p id="omnibox-error" className="mt-2 text-[13px] text-neg" role="alert">
-          {error}
+          {error.text}
+          {error.switchTo && (
+            <>
+              {' '}
+              <button type="button" onClick={() => switchAndGo(error.switchTo!)} className="font-medium underline underline-offset-2">
+                Open it as a token
+              </button>
+            </>
+          )}
         </p>
       )}
     </form>

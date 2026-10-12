@@ -22,6 +22,8 @@ export function stampOf(pnl: number): { text: string; tone: Tone } {
 
 export const KEYS = {
   recent: 'receipts:recent',
+  /** Whether the paste box takes a token CA or a wallet. */
+  pasteKind: 'receipts:paste-kind',
   best: (mint: string) => `receipts:best:${mint}`,
 };
 
