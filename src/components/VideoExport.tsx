@@ -17,10 +17,17 @@ export function VideoExport({ video, fileBase, className }: { video: ReplayVideo
       <button type="button" onClick={() => setOpen(true)} className={cx('btn', className ?? 'btn-quiet')}>
         <Clapperboard className="size-4" aria-hidden /> Video
       </button>
-      <Sheet open={open} onClose={close} title="Make a video" wide>
-        {open && <Maker video={video} fileBase={fileBase} />}
-      </Sheet>
+      <VideoSheet video={video} fileBase={fileBase} open={open} onClose={close} />
     </>
+  );
+}
+
+/** The video maker on its own, for a button that has to fetch the run before it can open. */
+export function VideoSheet({ video, fileBase, open, onClose, title = 'Make a video' }: { video: ReplayVideo | null; fileBase: string; open: boolean; onClose: () => void; title?: string }) {
+  return (
+    <Sheet open={open && !!video} onClose={onClose} title={title} wide>
+      {open && video && <Maker video={video} fileBase={fileBase} />}
+    </Sheet>
   );
 }
 
