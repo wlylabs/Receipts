@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { pct, price, usd } from '../lib/format';
 import { toneOf } from '../lib/game';
@@ -7,9 +8,14 @@ import { ROUTES } from '../lib/site';
 import type { TokenInfo } from '../lib/types';
 import { TokenRow } from './TokenRow';
 
+/** Rows before "show all", so My paper trades sits close under it on phones. */
+const SHOWN = 5;
+
 /** What DexScreener is boosting now, one tap from a paper trade. */
 export function Trending() {
   const { state } = useApi<{ tokens: TokenInfo[] }>('/api/trending/');
+  const [more, setMore] = useState(false);
+  const tokens = state.status === 'ready' ? state.data.tokens : [];
   return (
     <section aria-labelledby="trending" className="panel overflow-hidden">
       <div className="flex items-baseline justify-between border-b border-line px-3 py-2.5 sm:px-4">
@@ -31,7 +37,7 @@ export function Trending() {
       {state.status === 'error' && <p className="px-4 py-6 text-[13px] text-muted">Couldn’t load trending tokens right now.</p>}
       {state.status === 'ready' && (
         <ul className="divide-y divide-line">
-          {state.data.tokens.map((t) => (
+          {(more ? tokens : tokens.slice(0, SHOWN)).map((t) => (
             <li key={`${t.chain}:${t.address}`}>
               <TokenRow
                 href={ROUTES.token(t.address)}
@@ -45,6 +51,11 @@ export function Trending() {
             </li>
           ))}
         </ul>
+      )}
+      {tokens.length > SHOWN && (
+        <button type="button" onClick={() => setMore((m) => !m)} className="w-full border-t border-line py-2.5 text-[13px] text-muted hover:bg-hover hover:text-ink">
+          {more ? 'Show less' : `Show all ${tokens.length}`}
+        </button>
       )}
     </section>
   );
