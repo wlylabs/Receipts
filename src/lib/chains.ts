@@ -23,6 +23,7 @@ export const CHAINS: Record<string, Chain> = {
   polygon: evm('Polygon', 'polygon_pos', 'https://polygonscan.com'),
   avalanche: evm('Avalanche', 'avax', 'https://snowtrace.io'),
   optimism: evm('Optimism', 'optimism', 'https://optimistic.etherscan.io'),
+  robinhood: evm('Robinhood Chain', 'robinhood', 'https://robinhoodchain.blockscout.com'),
 };
 
 export const SUPPORTED = Object.values(CHAINS).map((c) => c.name);

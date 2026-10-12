@@ -43,7 +43,7 @@ export default async function HomePage({ searchParams }: Props) {
           <span className="text-muted">Make the video.</span>
         </h1>
         <p className="mx-auto mt-4 max-w-lg text-[15px] leading-relaxed text-ink-2 sm:text-base">
-          Real charts, real wallets, pretend money. Solana, Ethereum, Base, BNB, Arbitrum, Polygon, Avalanche and Optimism.
+          Real charts, real wallets, pretend money. Solana, Ethereum, Base, BNB, Arbitrum, Polygon, Avalanche, Optimism and Robinhood Chain.
         </p>
         <div id="paste" className="mt-8 scroll-mt-24 text-left">
           <Omnibox />

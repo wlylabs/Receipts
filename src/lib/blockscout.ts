@@ -10,6 +10,7 @@ export const BLOCKSCOUT: Record<string, string> = {
   optimism: 'https://optimism.blockscout.com',
   arbitrum: 'https://arbitrum.blockscout.com',
   polygon: 'https://polygon.blockscout.com',
+  robinhood: 'https://robinhoodchain.blockscout.com',
 };
 
 const PAGES = 4;
