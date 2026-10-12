@@ -1,5 +1,5 @@
 import type { Marker } from '../components/ReplayChart';
-import { renderSound, SAMPLE_RATE, type Cue } from './videoSound';
+import { renderSound, SAMPLE_RATE, tickStep, type Cue } from './videoSound';
 import { X_LIGHT } from './palette';
 import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './candles';
 
@@ -10,8 +10,8 @@ import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './can
  * link. The beats:
  *
  *   lead-in  a beat on the bare chart
- *   replay   the playhead runs the chart, the P&L counts, trades pop in (with a caption each in
- *            the story cut)
+ *   replay   the playhead runs the chart, the P&L counts, trades pop in (and in the story cut, a
+ *            caption at each big moment of the run and each sell's P&L floating up off it)
  *   hold     the camera pulls back to the whole chart and holds there, the final number on it
  */
 
@@ -33,13 +33,22 @@ interface Timing {
 
 export const LENGTHS: Record<VideoLength, Timing & { label: string; hint: string }> = {
   short: { seconds: 9, hook: 0.5, play: 5.6, label: 'Short', hint: '9 s' },
-  story: { seconds: 18, hook: 0.6, play: 13, label: 'Story', hint: '18 s, a caption per trade' },
+  story: { seconds: 18, hook: 0.6, play: 13, label: 'Story', hint: '18 s, the run told in its big moments' },
 };
 
 export const FPS = 30;
 
 export interface Caption {
   ts: number;
+  text: string;
+  tone: 'pos' | 'neg' | null;
+}
+
+/** A number that floats up off a trade's marker in the story cut, e.g. what a sell made. */
+export interface Pop {
+  /** The marker it rises from. */
+  ts: number;
+  price: number;
   text: string;
   tone: 'pos' | 'neg' | null;
 }
@@ -56,8 +65,10 @@ export interface ReplayVideo {
   from: number;
   to: number;
   markers: Marker[];
-  /** One per trade, shown in the story cut as the playhead passes it. */
+  /** The run's big moments, a few at most, shown in the story cut as the playhead passes each. */
   captions: Caption[];
+  /** Floated up off the markers in the story cut; each must sit on one of `markers`. */
+  pops?: Pop[];
   /** The P&L in USD with the playhead at a time; its sign colours the counter. */
   pnlAt: (ts: number) => number;
   /** What the counter reads with the playhead at a time, e.g. the market cap; the P&L when left out. */
@@ -454,6 +465,22 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   }
   g.restore();
 
+  // what each sell made, rising off its marker and fading, in the story cut
+  if (l === 'story' && playing) {
+    for (const o of v.pops ?? []) {
+      if (o.ts > head || o.ts < geo.t0) continue;
+      const dt = time - timeOf(Math.max(o.ts, v.from), v, l);
+      if (dt >= POP_SECONDS) continue;
+      const c = candleAt(v.candles, v.step, o.ts);
+      // just over the sell's pill, rising, but never up into the caption
+      const y = geo.Y(Math.max(c?.[2] ?? o.price, o.price)) - 92 * big - 48 * big * easeOut(dt / POP_SECONDS);
+      const ceiling = L.caption.y + L.caption.size * 1.2 + 48 * big;
+      A(clamp01(dt / 0.15) * clamp01((POP_SECONDS - dt) / 0.4));
+      drawPop(g, geo.X(c ? c[0] + v.step / 2 : o.ts), Math.max(ceiling, y), o, easeBack(dt / 0.3), big);
+      A(1);
+    }
+  }
+
   tag(nowPrice, playing ? color : INK, v.label(nowPrice * v.scale));
 
   // the playhead's date, held in one place under the chart and faded in
@@ -467,6 +494,25 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   }
 
   A(1);
+}
+
+/** How long a pop shows, rising the whole time. */
+const POP_SECONDS = 1.6;
+
+function drawPop(g: CanvasRenderingContext2D, x: number, y: number, o: Pop, k: number, scale: number) {
+  if (k <= 0) return;
+  g.save();
+  g.translate(x, y);
+  g.scale(k * scale, k * scale);
+  font(g, 38, 750);
+  g.textAlign = 'center';
+  g.lineJoin = 'round';
+  g.lineWidth = 10;
+  g.strokeStyle = BG;
+  g.strokeText(o.text, 0, 0);
+  g.fillStyle = o.tone === 'pos' ? POS : o.tone === 'neg' ? NEG : INK;
+  g.fillText(o.text, 0, 0);
+  g.restore();
 }
 
 function drawPill(g: CanvasRenderingContext2D, x: number, y: number, text: string, size: number, color: string, max: number) {
@@ -515,9 +561,19 @@ export function soundCues(v: ReplayVideo, l: VideoLength): Cue[] {
   const T = LENGTHS[l];
   const geo = geometry(v, layout('square'));
   const cues: Cue[] = [{ t: 0.02, kind: 'hook' }];
-  for (let t = T.hook; t < T.play; t += l === 'story' ? 0.16 : 0.11) {
-    const head = v.from + (v.to - v.from) * playAt(t, l, v);
-    cues.push({ t, kind: 'tick', pitch: geo.level(geo.at(head)) });
+  // a tick each time the price steps onto another note, like a ratchet, so a fast move ticks
+  // fast; never closer than GAP, and a slow one still on a quiet stretch
+  const GAP = 0.055;
+  const QUIET = l === 'story' ? 0.4 : 0.3;
+  let last = -Infinity;
+  let step = -1;
+  for (let t = T.hook; t < T.play; t += 1 / 120) {
+    const level = geo.level(geo.at(v.from + (v.to - v.from) * playAt(t, l, v)));
+    const s = tickStep(level);
+    if (t - last < GAP || (s === step && t - last < QUIET)) continue;
+    cues.push({ t, kind: 'tick', pitch: level });
+    last = t;
+    step = s;
   }
   for (const m of v.markers) if (m.ts <= v.to) cues.push({ t: timeOf(Math.max(m.ts, v.from), v, l), kind: m.kind });
   cues.push({ t: T.play + 0.2, kind: v.pnl > 1e-6 ? 'win' : v.pnl < -1e-6 ? 'loss' : 'even' });
