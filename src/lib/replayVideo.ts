@@ -1,5 +1,5 @@
 import type { Marker } from '../components/ReplayChart';
-import { renderSound, SAMPLE_RATE, type Cue } from './videoSound';
+import { renderSound, SAMPLE_RATE, tickStep, type Cue } from './videoSound';
 import { X_LIGHT } from './palette';
 import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './candles';
 
@@ -515,9 +515,19 @@ export function soundCues(v: ReplayVideo, l: VideoLength): Cue[] {
   const T = LENGTHS[l];
   const geo = geometry(v, layout('square'));
   const cues: Cue[] = [{ t: 0.02, kind: 'hook' }];
-  for (let t = T.hook; t < T.play; t += l === 'story' ? 0.16 : 0.11) {
-    const head = v.from + (v.to - v.from) * playAt(t, l, v);
-    cues.push({ t, kind: 'tick', pitch: geo.level(geo.at(head)) });
+  // a tick each time the price steps onto another note, like a ratchet, so a fast move ticks
+  // fast; never closer than GAP, and a slow one still on a quiet stretch
+  const GAP = 0.055;
+  const QUIET = l === 'story' ? 0.4 : 0.3;
+  let last = -Infinity;
+  let step = -1;
+  for (let t = T.hook; t < T.play; t += 1 / 120) {
+    const level = geo.level(geo.at(v.from + (v.to - v.from) * playAt(t, l, v)));
+    const s = tickStep(level);
+    if (t - last < GAP || (s === step && t - last < QUIET)) continue;
+    cues.push({ t, kind: 'tick', pitch: level });
+    last = t;
+    step = s;
   }
   for (const m of v.markers) if (m.ts <= v.to) cues.push({ t: timeOf(Math.max(m.ts, v.from), v, l), kind: m.kind });
   cues.push({ t: T.play + 0.2, kind: v.pnl > 1e-6 ? 'win' : v.pnl < -1e-6 ? 'loss' : 'even' });

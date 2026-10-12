@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LENGTHS, playAt, timeOf, zoomAt } from './replayVideo';
+import { LENGTHS, playAt, soundCues, timeOf, zoomAt, type ReplayVideo } from './replayVideo';
 
 describe('replay video timing', () => {
   for (const l of ['short', 'story'] as const) {
@@ -44,6 +44,26 @@ describe('replay video slow motion and camera', () => {
       expect(zoomAt(0, l)).toBe(1);
       expect(zoomAt((T.hook + T.play) / 2, l)).toBeCloseTo(1, 5);
       expect(zoomAt(T.play, l)).toBe(0);
+    });
+  }
+});
+
+describe('replay video sound', () => {
+  const series = Array.from({ length: 101 }, (_, i) => [i * 10, i < 50 ? 1 + i / 10 : 6] as [number, number]);
+  const video = {
+    symbol: 'X', chainName: 'X', series, candles: [], step: 10, from: 0, to: 1000,
+    markers: [{ ts: 200, price: 3, kind: 'buy' as const }], captions: [],
+    pnlAt: () => 0, pnl: 1, money: String, scale: 1, label: String, date: String,
+  } satisfies ReplayVideo;
+  for (const l of ['short', 'story'] as const) {
+    it(`${l}: ticks fast while the price climbs, slowly once it is flat, never too close`, () => {
+      const T = LENGTHS[l];
+      const ticks = soundCues(video, l).filter((c) => c.kind === 'tick').map((c) => c.t);
+      for (let i = 1; i < ticks.length; i++) expect(ticks[i]! - ticks[i - 1]!).toBeGreaterThanOrEqual(0.055 - 1e-9);
+      const half = timeOf(500, video, l);
+      const climb = ticks.filter((t) => t < half).length / (half - T.hook);
+      const flat = ticks.filter((t) => t > half).length / (T.play - half);
+      expect(climb).toBeGreaterThan(flat);
     });
   }
 });
