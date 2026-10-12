@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowUpRight, Copy, TrendingDown, TrendingUp } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
@@ -8,16 +8,21 @@ import { useStored } from '../hooks/useStored';
 import { KEYS, type Recent } from '../lib/game';
 import { pushRecent } from '../lib/recent';
 import type { BoardRow, TokenReceipts } from '../lib/types';
-import { date, pct, price, short, span, usd } from '../lib/format';
+import { date, mcap, pct, price, short, span, usd } from '../lib/format';
+import { bucket } from '../lib/candles';
+import { supplyOf } from '../lib/receipts';
 import { ROUTES } from '../lib/site';
 import { copyText } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import { Failure, Loading } from './States';
 import { TokenImage } from './TokenImage';
+import { ReplayChart } from './ReplayChart';
 
 /** Wallets shown on each side of the board. */
 const SIDE = 3;
+/** Most candles drawn at once. */
+const CANDLES = 80;
 
 export function TokenView({ ca }: { ca: string }) {
   const { state, reload } = useApi<TokenReceipts>(`/api/token/${ca}/`);
@@ -32,10 +37,14 @@ export function TokenView({ ca }: { ca: string }) {
   return <TokenPage r={state.data} />;
 }
 
-/** The token at a glance, then its top 3 winners and losers to pick a wallet to replay. */
+/** The token at a glance and its all-time chart, then its top 3 winners and losers to copy or replay. */
 function TokenPage({ r }: { r: TokenReceipts }) {
   const { token } = r;
   const [now] = useState(() => Date.now() / 1000);
+  // DEX traders read market cap more than price: the supply turns one into the other
+  const supply = supplyOf(token);
+  const cap = (p: number) => (supply ? mcap(p * supply) : price(p));
+  const chart = useMemo(() => bucket(r.candles, CANDLES), [r.candles]);
   const winners = r.board.filter((w) => w.pnl > 0).slice(0, SIDE);
   const losers = r.board.filter((w) => w.pnl < 0).reverse().slice(0, SIDE);
 
@@ -54,15 +63,15 @@ function TokenPage({ r }: { r: TokenReceipts }) {
           </p>
         </div>
         <div className="text-right">
-          <p className="num text-[18px] font-semibold tracking-tight">{price(token.priceUsd)}</p>
+          <p className="num text-[18px] font-semibold tracking-tight">{supply ? `MC ${mcap(token.mcapUsd)}` : price(token.priceUsd)}</p>
           {token.change24h !== null && <p className={cx('num text-[12.5px] font-medium', token.change24h >= 0 ? 'text-pos' : 'text-neg')}>{pct(token.change24h / 100, { signed: true })} 24h</p>}
         </div>
       </header>
       <dl className="no-scrollbar mt-4 flex gap-5 overflow-x-auto border-y border-line py-2.5 text-[12.5px]">
-        <Kv k="Mcap" v={usd(token.mcapUsd)} />
+        <Kv k="Price" v={price(token.priceUsd)} />
         <Kv k="Liquidity" v={usd(token.liquidityUsd)} />
         <Kv k="Vol 24h" v={usd(token.volume24hUsd)} />
-        <Kv k="ATH" v={price(r.ath.priceUsd)} />
+        <Kv k="ATH" v={cap(r.ath.priceUsd)} />
         <a href={token.url} target="_blank" rel="noreferrer" className="ml-auto flex shrink-0 items-center gap-1 text-muted hover:text-ink">
           DexScreener <ArrowUpRight className="size-3.5" aria-hidden />
         </a>
@@ -73,13 +82,22 @@ function TokenPage({ r }: { r: TokenReceipts }) {
         </p>
       )}
 
+      {/* the token's whole history */}
+      <section className="panel mt-4 p-3 sm:p-4" aria-label="All-time chart">
+        <ReplayChart className="md:aspect-[3/1] lg:aspect-[4/1]" candles={chart.candles} step={chart.step} scale={supply || 1} label={supply ? mcap : price} tone={token.change24h === null ? null : token.change24h >= 0 ? 'pos' : 'neg'} />
+        <div className="num mt-1 flex justify-between pr-14 text-[11px] text-muted sm:pr-16">
+          <span>Launched {date(token.createdAt ?? chart.candles[0]?.[0] ?? now)}</span>
+          <span>Now</span>
+        </div>
+      </section>
+
 
       <section className="mt-6" aria-labelledby="board-title">
         <h2 id="board-title" className="text-[14px] font-semibold">
           Recent traders
         </h2>
         <p className="mt-0.5 text-[12.5px] text-muted">
-          {`${r.board.length} wallets in the latest ${r.window.trades} trades (${span(r.window.to - r.window.from)}). Pick one to replay its trades and make a video.`}
+          {`${r.board.length} wallets in the latest ${r.window.trades} trades (${span(r.window.to - r.window.from)}). Copy an address, or tap a wallet to replay its trades and make a video.`}
         </p>
         {r.board.length === 0 ? (
           <p className="panel mt-2 px-4 py-6 text-[13px] text-muted">No recent trades in the feed.</p>

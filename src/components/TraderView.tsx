@@ -7,7 +7,7 @@ import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { useReplay } from '../hooks/useReplay';
 import { KEYS, RANKS, toneOf, type Recent } from '../lib/game';
-import { position, priceAt, rankOf } from '../lib/receipts';
+import { position, priceAt, rankOf, supplyOf } from '../lib/receipts';
 import { bucket, mergeMarkers } from '../lib/candles';
 import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
@@ -61,7 +61,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
   // every candle since launch, merged down to a count that stays readable on a phone
   const chart = useMemo(() => bucket(r.candles, CANDLES), [r.candles]);
   // DEX traders read market cap more than price: the supply turns one into the other
-  const supply = token.mcapUsd && token.priceUsd > 0 ? token.mcapUsd / token.priceUsd : 0;
+  const supply = supplyOf(token);
   const scale = supply || 1;
   const label = supply ? mcap : price;
   const at = (pr: number) => (supply ? `${mcap(pr * supply)} MC` : price(pr));
