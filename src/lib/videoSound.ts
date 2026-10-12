@@ -1,11 +1,11 @@
 /**
  * The video's sound, made from nothing but oscillators and noise in an OfflineAudioContext, so
- * every sound is our own and no platform can claim it: a whoosh under the hook, soft ticks while
+ * every sound is our own and no platform can claim it: a whoosh as it starts, soft ticks while
  * the price runs (higher as it climbs), a blip for each buy and sell, and a chord or a thud for
  * the result.
  */
 
-export type CueKind = 'hook' | 'tick' | 'buy' | 'sell' | 'win' | 'loss' | 'even' | 'loop';
+export type CueKind = 'hook' | 'tick' | 'buy' | 'sell' | 'win' | 'loss' | 'even';
 
 export interface Cue {
   t: number;
@@ -31,9 +31,6 @@ export async function renderSound(cues: Cue[], seconds: number): Promise<AudioBu
       case 'hook':
         whoosh(ctx, master, noise, c.t, 0.55, 0.22);
         tone(ctx, master, c.t + 0.05, 'sine', 220, 330, 0.5, 0.1);
-        break;
-      case 'loop':
-        whoosh(ctx, master, noise, c.t, 0.5, 0.12);
         break;
       case 'tick':
         tone(ctx, master, c.t, 'triangle', 520 + (c.pitch ?? 0.5) * 900, undefined, 0.045, 0.045);

@@ -10,8 +10,7 @@ import { renderSound, SAMPLE_RATE, type Cue } from './videoSound';
  *   lead-in  a beat on the bare chart
  *   replay   the playhead runs the chart, the P&L counts, trades pop in (with a caption each in
  *            the story cut)
- *   reveal   the verdict, the P&L, its rank and the numbers behind it
- *   loop     the last moments fade back into the first frame, so a looping player never cuts
+ *   reveal   the verdict, the P&L, its rank and the numbers behind it, held to the end
  */
 
 export type VideoFormat = 'landscape' | 'square' | 'portrait';
@@ -28,13 +27,11 @@ interface Timing {
   /** The bare chart holds until here; the replay then runs to `play`. */
   hook: number;
   play: number;
-  /** The reveal holds until here; then the loop fades back to the first frame. */
-  reveal: number;
 }
 
 export const LENGTHS: Record<VideoLength, Timing & { label: string; hint: string }> = {
-  short: { seconds: 9, hook: 0.5, play: 5.4, reveal: 8.3, label: 'Short', hint: '9 s, loops' },
-  story: { seconds: 18, hook: 0.6, play: 12.4, reveal: 17.2, label: 'Story', hint: '18 s, a caption per trade' },
+  short: { seconds: 9, hook: 0.5, play: 5.6, label: 'Short', hint: '9 s' },
+  story: { seconds: 18, hook: 0.6, play: 13, label: 'Story', hint: '18 s, a caption per trade' },
 };
 
 export const FPS = 30;
@@ -99,12 +96,6 @@ export function playAt(time: number, l: VideoLength = 'short'): number {
 
 export function revealAt(time: number, l: VideoLength = 'short'): number {
   return easeOut((time - LENGTHS[l].play - 0.2) / 0.45);
-}
-
-/** How far the last frames have faded back into the first, 0 to 1. */
-export function loopAt(time: number, l: VideoLength = 'short'): number {
-  const T = LENGTHS[l];
-  return easeInOut((time - T.reveal) / (T.seconds - T.reveal));
 }
 
 /** The time in the video at which the playhead reaches a timestamp of the run. */
@@ -227,12 +218,10 @@ function geometry(v: ReplayVideo, L: Layout) {
   return { s, t0, X, Y, at, level, points };
 }
 
-/** One frame at `time` seconds: the scene, with the first frame faded over it at the end. */
+/** One frame at `time` seconds. */
 export function drawFrame(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f: VideoFormat, l: VideoLength = 'short') {
   g.globalAlpha = 1;
   drawScene(g, time, v, f, l, 1);
-  const k = loopAt(time, l);
-  if (k > 0) drawScene(g, 0, v, f, l, k);
   g.globalAlpha = 1;
 }
 
@@ -520,7 +509,6 @@ export function soundCues(v: ReplayVideo, l: VideoLength): Cue[] {
   }
   for (const m of v.markers) if (m.ts <= v.to) cues.push({ t: timeOf(Math.max(m.ts, v.from), v, l), kind: m.kind });
   cues.push({ t: T.play + 0.2, kind: v.pnl > 1e-6 ? 'win' : v.pnl < -1e-6 ? 'loss' : 'even' });
-  cues.push({ t: T.reveal + 0.05, kind: 'loop' });
   return cues;
 }
 
