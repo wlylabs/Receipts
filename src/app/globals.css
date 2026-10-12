@@ -173,6 +173,10 @@ body {
   border-color: var(--ink);
   background: var(--surface);
 }
+/* the field's dark border already marks focus; the ring inside it is a second, clashing one */
+.field input:focus-visible {
+  outline: none;
+}
 
 @keyframes pop-in {
   0% {
