@@ -13,7 +13,7 @@ import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
 import type { Trade, TraderReceipts } from '../lib/types';
 import { compact, dateTime, day, pct, price, short, span, usd } from '../lib/format';
-import { ROUTES, SITE_HOST, SITE_URL } from '../lib/site';
+import { ROUTES, SITE_URL } from '../lib/site';
 import { saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
@@ -23,6 +23,7 @@ import { ReplayChart, type Marker } from './ReplayChart';
 import { ResultCard, type Stat } from './ResultCard';
 import { VideoExport } from './VideoExport';
 import type { ReplayVideo } from '../lib/replayVideo';
+import { walletHook, walletVerdict } from '../lib/story';
 import { TokenImage } from './TokenImage';
 
 type Call = 'profit' | 'rekt' | 'skip';
@@ -126,15 +127,19 @@ function TraderGame({ r }: { r: TraderReceipts }) {
   };
 
   const markers: Marker[] = trades.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side }));
+  const money = (n: number) => usd(n, { signed: true });
+  const story = { buys: p.buys, sells: p.sells, usdIn: p.usdIn, pnl: p.pnl, roi: p.roi, realized: p.realized, unrealized: p.unrealized, openValue: p.openValue, missedUsd: p.missedUsd };
   const video: ReplayVideo = {
-    kicker: `WALLET ${short(r.owner)}`,
+    kicker: short(r.owner),
     symbol: token.symbol,
     chainName: token.chainName,
-    hook: [`${short(r.owner)} on ${token.symbol}`, 'profit or rekt →'],
+    hook: [`${short(r.owner)} on ${token.symbol}`, walletHook(story, (n) => usd(n))],
+    verdict: walletVerdict(story, (n) => usd(n)),
     series,
     from,
     to,
     markers: markers.length <= 60 ? markers : [],
+    captions: trades.map((t) => ({ ts: t.ts, text: `${t.side === 'buy' ? 'Buy' : 'Sell'} ${usd(t.usd)} at ${price(t.priceUsd)}`, tone: t.side === 'buy' ? ('pos' as const) : ('neg' as const) })),
     pnlAt: (ts) => {
       if (ts >= to) return p.pnl;
       const seen = trades.filter((t) => t.ts <= ts);
@@ -145,8 +150,7 @@ function TraderGame({ r }: { r: TraderReceipts }) {
     roiText: p.roi === null ? null : pct(p.roi, { signed: true }),
     rank,
     stats: stats.slice(0, 4),
-    site: SITE_HOST,
-    money: (n) => usd(n, { signed: true }),
+    money,
     date: day,
   };
 
@@ -167,7 +171,6 @@ function TraderGame({ r }: { r: TraderReceipts }) {
         from,
         to,
         markers: markers.length <= 60 ? markers : [],
-        site: SITE_HOST,
       });
       const res = await saveFile(new File([blob], `${r.owner.slice(0, 6)}-${token.symbol.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token'}.png`, { type: 'image/png' }));
       if (res === 'saved') toast('Image saved.');

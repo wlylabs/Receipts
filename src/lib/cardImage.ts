@@ -1,7 +1,8 @@
 import type { Marker } from '../components/ReplayChart';
 
 export interface CardData {
-  kicker: string;
+  /** A small line above the ticker, e.g. a wallet's short address. */
+  kicker?: string;
   symbol: string;
   chainName: string;
   pnl: string;
@@ -13,7 +14,6 @@ export interface CardData {
   from: number;
   to: number;
   markers: Marker[];
-  site: string;
 }
 
 const W = 1080;
@@ -41,9 +41,11 @@ export async function cardPng(d: CardData): Promise<Blob> {
   // header
   g.textBaseline = 'alphabetic';
   g.textAlign = 'left';
-  font(30, 500);
-  g.fillStyle = MUTED;
-  g.fillText(d.kicker, PAD, 120);
+  if (d.kicker) {
+    font(30, 500);
+    g.fillStyle = MUTED;
+    g.fillText(d.kicker, PAD, 120);
+  }
   font(64, 600);
   g.fillStyle = INK;
   g.fillText(d.symbol, PAD, 196);
@@ -75,7 +77,7 @@ export async function cardPng(d: CardData): Promise<Blob> {
   const cx0 = PAD;
   const cx1 = W - PAD;
   const cy0 = 470;
-  const cy1 = 860;
+  const cy1 = 920;
   g.strokeStyle = LINE;
   g.lineWidth = 2;
   for (const f of [0.25, 0.5, 0.75]) {
@@ -160,29 +162,29 @@ export async function cardPng(d: CardData): Promise<Blob> {
   // the rank
   g.fillStyle = '#f7f7f8';
   g.beginPath();
-  g.roundRect(PAD, 920, W - PAD * 2, 110, 20);
+  g.roundRect(PAD, 990, W - PAD * 2, 110, 20);
   g.fill();
   font(26, 600);
   const rank = d.rank.name.toUpperCase();
   const rw = g.measureText(rank).width + 36;
   g.fillStyle = INK;
   g.beginPath();
-  g.roundRect(PAD + 24, 948, rw, 54, 12);
+  g.roundRect(PAD + 24, 1018, rw, 54, 12);
   g.fill();
   g.fillStyle = '#ffffff';
-  g.fillText(rank, PAD + 42, 984);
+  g.fillText(rank, PAD + 42, 1054);
   font(28, 400);
   g.fillStyle = '#3f3f46';
   let line = d.rank.line;
   while (line.length > 3 && g.measureText(line).width > W - PAD * 2 - rw - 72) line = line.slice(0, -2) + '…';
-  g.fillText(line, PAD + rw + 48, 985);
+  g.fillText(line, PAD + rw + 48, 1055);
 
   // the numbers
   d.stats.slice(0, 4).forEach((st, i) => {
     const col = i % 2;
     const row = Math.floor(i / 2);
     const x = PAD + col * ((W - PAD * 2) / 2 + 12);
-    const y = 1100 + row * 72;
+    const y = 1180 + row * 72;
     const w = (W - PAD * 2) / 2 - 12;
     font(28, 400);
     g.fillStyle = MUTED;
@@ -200,27 +202,5 @@ export async function cardPng(d: CardData): Promise<Blob> {
     g.stroke();
   });
 
-  // the mark and the site
-  g.textAlign = 'left';
-  drawMark(g, PAD, H - 98, 40);
-  font(32, 600);
-  g.fillStyle = INK;
-  g.fillText('receipts', PAD + 52, H - 66);
-  font(26, 400);
-  g.fillStyle = MUTED;
-  g.textAlign = 'right';
-  g.fillText(d.site, W - PAD, H - 66);
-
   return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('canvas'))), 'image/png'));
-}
-
-/** The logo (a till roll unspooling into an r), scaled from its 24-unit box. */
-function drawMark(g: CanvasRenderingContext2D, x: number, y: number, size: number) {
-  g.save();
-  g.translate(x, y);
-  g.scale(size / 24, size / 24);
-  g.fillStyle = INK;
-  g.fill(new Path2D('M4.5 21.5V12c0-4.4 3.2-7.5 7.5-7.5h1.5v5.2H12c-1.4 0-2.3.9-2.3 2.3v9.5l-1.3-1.15-1.3 1.15-1.3-1.15z'));
-  g.fill(new Path2D('M16.3 3a4.1 4.1 0 1 1 0 8.2 4.1 4.1 0 0 1 0-8.2zm0 2.6a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z'), 'evenodd');
-  g.restore();
 }

@@ -12,7 +12,7 @@ import { pushRecent } from '../lib/recent';
 import { MAX_PAPER, PAPER_KEY, paperPnl, type PaperTrade } from '../lib/paper';
 import type { TokenReceipts } from '../lib/types';
 import { compact, day, parseAmount, pct, price, short, span, usd } from '../lib/format';
-import { ROUTES, SITE_HOST, SITE_URL } from '../lib/site';
+import { ROUTES, SITE_URL } from '../lib/site';
 import { saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
@@ -21,6 +21,7 @@ import { ReplayChart, type Marker } from './ReplayChart';
 import { ResultCard, type Stat } from './ResultCard';
 import { VideoExport } from './VideoExport';
 import type { ReplayVideo } from '../lib/replayVideo';
+import { paperHook, paperVerdict } from '../lib/story';
 import { TokenImage } from './TokenImage';
 
 const BAGS = [50, 100, 500, 1000];
@@ -156,28 +157,38 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
 
   const video: ReplayVideo | null =
     run && rank
-      ? {
-          kicker: 'PAPER TRADE',
-          symbol: token.symbol,
-          chainName: token.chainName,
-          hook: [`${usd(run.amount)} in ${token.symbol}`, `bought ${day(series[run.entry]![0])} →`],
-          series,
-          from: series[run.entry]![0],
-          to: series[run.exit]![0],
-          markers: [
-            { ts: series[run.entry]![0], price: run.sim.entryPrice, kind: 'buy', label: 'Buy' },
-            { ts: series[run.exit]![0], price: run.sim.exitPrice, kind: 'sell', label: run.holdNow ? 'Now' : 'Sell' },
-          ],
-          pnlAt: (ts) => (ts >= series[run.exit]![0] ? run.sim.pnl : run.sim.tokens * priceAt(series, ts, token.priceUsd) - run.amount),
-          pnl: run.sim.pnl,
-          pnlText: usd(run.sim.pnl, { signed: true }),
-          roiText: pct(run.sim.roi, { signed: true }),
-          rank,
-          stats: stats.slice(0, 4),
-          site: SITE_HOST,
-          money: (n) => usd(n, { signed: true }),
-          date: day,
-        }
+      ? (() => {
+          const story = { entry: run.entry, athIdx, dipIdx, holdNow: run.holdNow, roi: run.sim.roi, out: run.sim.out, bestOut: run.sim.bestOut, usd: run.amount };
+          const buyTs = series[run.entry]![0];
+          const sellTs = series[run.exit]![0];
+          const peak = run.sim.bestTs > buyTs && run.sim.bestTs < sellTs ? [{ ts: run.sim.bestTs, text: `Top: ${usd(run.sim.bestOut - run.amount, { signed: true })}`, tone: 'pos' as const }] : [];
+          return {
+            symbol: token.symbol,
+            chainName: token.chainName,
+            hook: [`${usd(run.amount)} in ${token.symbol}`, paperHook(story, day(buyTs).split(',')[0]!)] as [string, string],
+            verdict: paperVerdict(story),
+            series,
+            from: buyTs,
+            to: sellTs,
+            markers: [
+              { ts: buyTs, price: run.sim.entryPrice, kind: 'buy' as const, label: 'Buy' },
+              { ts: sellTs, price: run.sim.exitPrice, kind: 'sell' as const, label: run.holdNow ? 'Now' : 'Sell' },
+            ],
+            captions: [
+              { ts: buyTs, text: `Buy ${usd(run.amount)} at ${price(run.sim.entryPrice)}`, tone: 'pos' as const },
+              ...peak,
+              { ts: sellTs, text: `${run.holdNow ? 'Still holding' : 'Sell'} at ${price(run.sim.exitPrice)}`, tone: toneOf(run.sim.pnl) },
+            ],
+            pnlAt: (ts: number) => (ts >= sellTs ? run.sim.pnl : run.sim.tokens * priceAt(series, ts, token.priceUsd) - run.amount),
+            pnl: run.sim.pnl,
+            pnlText: usd(run.sim.pnl, { signed: true }),
+            roiText: pct(run.sim.roi, { signed: true }),
+            rank,
+            stats: stats.slice(0, 4),
+            money: (n: number) => usd(n, { signed: true }),
+            date: day,
+          };
+        })()
       : null;
 
   const share = async () => {
@@ -196,7 +207,6 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
     try {
       const { cardPng } = await import('../lib/cardImage');
       const blob = await cardPng({
-        kicker: 'PAPER TRADE',
         symbol: token.symbol,
         chainName: token.chainName,
         pnl: usd(run.sim.pnl, { signed: true }),
@@ -211,7 +221,6 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
           { ts: series[run.entry]![0], price: run.sim.entryPrice, kind: 'buy', label: 'Buy' },
           { ts: series[run.exit]![0], price: run.sim.exitPrice, kind: 'sell', label: run.holdNow ? 'Now' : 'Sell' },
         ],
-        site: SITE_HOST,
       });
       const res = await saveFile(new File([blob], `${token.symbol.toLowerCase().replace(/[^a-z0-9]/g, '') || 'token'}-paper-trade.png`, { type: 'image/png' }));
       if (res === 'saved') toast('Image saved.');
