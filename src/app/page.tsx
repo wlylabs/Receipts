@@ -1,7 +1,5 @@
 import { History, LineChart } from 'lucide-react';
 import { Omnibox } from '../components/Omnibox';
-import { Trending } from '../components/Trending';
-import { PaperBook } from '../components/PaperBook';
 
 export default function HomePage() {
   return (
@@ -23,11 +21,6 @@ export default function HomePage() {
           <Mode icon={<History className="size-4" />} title="Wallet address" body="Pick a token they traded, call it profit or rekt, then watch their trades replay on the chart." />
         </div>
       </section>
-
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <Trending />
-        <PaperBook />
-      </div>
     </div>
   );
 }
