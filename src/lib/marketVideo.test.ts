@@ -27,8 +27,6 @@ describe('market video', () => {
     expect(s.video.to).toBe(1000 + 60 * 60);
     expect(s.video.candles).toHaveLength(60);
     expect(s.video.counter?.(s.video.to)).toBe('$5M MC');
-    expect(s.video.verdict).toBe('5x since launch, 95% off the top');
-    expect(s.video.roiText).toBe('5x');
   });
   it('calls out launch, the highs, the top and the way down, in order', () => {
     const texts = s.video.captions.map((c) => c.text);

@@ -1,7 +1,5 @@
 import { bucket, upTo } from './candles';
-import { marketOf } from './market';
 import { supplyOf } from './receipts';
-import { marketVerdict, sinceLaunch } from './story';
 import type { TokenReceipts } from './types';
 import { day, mcap, pct, price, span, usd } from './format';
 import type { Caption, ReplayVideo } from './replayVideo';
@@ -13,7 +11,7 @@ const MAX_CAPTIONS = 8;
 /**
  * A video of the token's whole market, launch to now: every candle the feed has, merged down to a
  * readable count, the market cap counting up with the playhead, a caption at launch, at each new
- * high, at the top and on the way down. It ends on the whole chart, with no result card.
+ * high, at the top and on the way down, ending on the whole chart and the market cap now.
  */
 export function marketStory(r: TokenReceipts, now = Date.now() / 1000): { video: ReplayVideo; fileBase: string } | null {
   const { token } = r;
@@ -50,13 +48,10 @@ export function marketStory(r: TokenReceipts, now = Date.now() / 1000): { video:
     if (k) captions.push({ ts: k[0], text: `${pct(drop)} off the top · ${at(k[4])}`, tone: 'neg' });
   }
 
-  const market = marketOf({ priceUsd: live, athUsd: ath, change24h: token.change24h, buys: r.window.buys, sells: r.window.sells });
-  const run = { now: live, launch, ath };
   const video: ReplayVideo = {
     kicker: token.createdAt ? `${span(now - token.createdAt)} since launch` : 'Since launch',
     symbol: token.symbol,
     chainName: token.chainName,
-    verdict: marketVerdict(run),
     series: r.series,
     candles: chart.candles,
     step: chart.step,
@@ -66,17 +61,7 @@ export function marketStory(r: TokenReceipts, now = Date.now() / 1000): { video:
     captions: captions.sort((a, b) => a.ts - b.ts),
     pnlAt: (ts) => priceAt(ts) - launch,
     counter: (ts) => at(priceAt(ts)),
-    reveal: false,
     pnl: live - launch,
-    pnlText: at(live),
-    roiText: sinceLaunch(run),
-    rank: { name: market.label, line: market.line },
-    stats: [
-      { k: supply ? 'Launch MC' : 'Launch', v: label(launch * scale) },
-      { k: supply ? 'ATH MC' : 'ATH', v: label(ath * scale) },
-      { k: 'From ATH', v: pct(Math.min(0, live / ath - 1), { signed: true }) },
-      { k: 'Liquidity', v: usd(token.liquidityUsd) },
-    ],
     money: (n) => usd(n, { signed: true }),
     scale,
     label,

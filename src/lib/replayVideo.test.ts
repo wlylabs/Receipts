@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { LENGTHS, playAt, revealAt, timeOf, zoomAt } from './replayVideo';
+import { LENGTHS, playAt, timeOf, zoomAt } from './replayVideo';
 
 describe('replay video timing', () => {
   for (const l of ['short', 'story'] as const) {
     const T = LENGTHS[l];
-    it(`${l}: holds on the bare chart, runs the replay, then reveals to the end`, () => {
+    it(`${l}: holds on the bare chart, then runs the replay`, () => {
       expect(playAt(0, l)).toBe(0);
       expect(playAt(T.hook, l)).toBe(0);
       expect(playAt((T.hook + T.play) / 2, l)).toBeCloseTo(0.5, 1);
       expect(playAt(T.play, l)).toBe(1);
-      expect(revealAt(T.play, l)).toBe(0);
-      expect(revealAt(T.play + 1, l)).toBe(1);
-      expect(revealAt(T.seconds, l)).toBe(1);
     });
     it(`${l}: finds when the playhead reaches a moment`, () => {
       const v = { from: 1000, to: 2000 };
@@ -43,7 +40,7 @@ describe('replay video slow motion and camera', () => {
       expect(far).toBeGreaterThan(0);
       expect(playAt(timeOf(500, run, l), l, run)).toBeCloseTo(0.5, 3);
     });
-    it(`${l}: the camera stays on the playhead through the replay and is back out for the reveal`, () => {
+    it(`${l}: the camera stays on the playhead through the replay and is back out on the whole chart at the end`, () => {
       expect(zoomAt(0, l)).toBe(1);
       expect(zoomAt((T.hook + T.play) / 2, l)).toBeCloseTo(1, 5);
       expect(zoomAt(T.play, l)).toBe(0);

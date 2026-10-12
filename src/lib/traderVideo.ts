@@ -4,8 +4,7 @@ import { RANKS, toneOf } from './game';
 import { position, priceAt, rankOf, supplyOf } from './receipts';
 import { bucket, mergeMarkers, type Candle } from './candles';
 import type { Trade, TraderReceipts } from './types';
-import { dateTime, day, mcap, pct, price, short, usd } from './format';
-import { walletVerdict } from './story';
+import { dateTime, day, mcap, price, short, usd } from './format';
 import type { ReplayVideo } from './replayVideo';
 
 /** Most candles drawn at once in a replay. */
@@ -72,12 +71,10 @@ export function traderStory(r: TraderReceipts): TraderStory {
     const seen = trades.filter((t) => t.ts <= ts);
     return seen.length ? position(seen, priceAt(series, ts, token.priceUsd)).pnl : 0;
   };
-  const story = { buys: p.buys, sells: p.sells, usdIn: p.usdIn, pnl: p.pnl, roi: p.roi, realized: p.realized, unrealized: p.unrealized, openValue: p.openValue, missedUsd: p.missedUsd };
   const video: ReplayVideo = {
     kicker: short(r.owner),
     symbol: token.symbol,
     chainName: token.chainName,
-    verdict: walletVerdict(story, (n) => usd(n)),
     series,
     candles: chart.candles,
     step: chart.step,
@@ -87,10 +84,6 @@ export function traderStory(r: TraderReceipts): TraderStory {
     captions: trades.map((t) => ({ ts: t.ts, text: `${t.side === 'buy' ? 'Buy' : 'Sell'} ${usd(t.usd)} at ${at(t.priceUsd)}`, tone: t.side === 'buy' ? ('pos' as const) : ('neg' as const) })),
     pnlAt,
     pnl: p.pnl,
-    pnlText: usd(p.pnl, { signed: true }),
-    roiText: p.roi === null ? null : pct(p.roi, { signed: true }),
-    rank,
-    stats: stats.slice(0, 4),
     money: (n) => usd(n, { signed: true }),
     scale,
     label,

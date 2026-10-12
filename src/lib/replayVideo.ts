@@ -12,7 +12,7 @@ import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './can
  *   lead-in  a beat on the bare chart
  *   replay   the playhead runs the chart, the P&L counts, trades pop in (with a caption each in
  *            the story cut)
- *   reveal   the verdict, the P&L, its rank and the numbers behind it, held to the end
+ *   hold     the camera pulls back to the whole chart and holds there, the final number on it
  */
 
 export type VideoFormat = 'landscape' | 'square' | 'portrait';
@@ -49,8 +49,6 @@ export interface ReplayVideo {
   kicker?: string;
   symbol: string;
   chainName: string;
-  /** The answer in one line, over the P&L: e.g. "Was 5x up, ended down 40%". */
-  verdict: string;
   series: readonly [number, number][];
   /** The chart as candles over the same stretch, `step` seconds each. */
   candles: readonly Candle[];
@@ -64,13 +62,8 @@ export interface ReplayVideo {
   pnlAt: (ts: number) => number;
   /** What the counter reads with the playhead at a time, e.g. the market cap; the P&L when left out. */
   counter?: (ts: number) => string;
-  /** False ends on the whole chart, counter and date held, with no result card over it. */
-  reveal?: boolean;
+  /** The final P&L: its sign picks the closing chord. */
   pnl: number;
-  pnlText: string;
-  roiText: string | null;
-  rank: { name: string; line: string };
-  stats: { k: string; v: string }[];
   money: (n: number) => string;
   /** What the axis shows instead of price, e.g. market cap: price times `scale`. */
   scale: number;
@@ -79,7 +72,7 @@ export interface ReplayVideo {
   date: (ts: number) => string;
 }
 
-const { bg: BG, ink: INK, ink2: INK2, muted: MUTED, line: LINE, subtle: SUBTLE, pos: POS, neg: NEG } = X_LIGHT;
+const { bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = X_LIGHT;
 const SANS = "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif";
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -153,10 +146,6 @@ export function playAt(time: number, l: VideoLength = 'short', v?: Run): number 
   return v ? warp(eased, warpTable(v)) : eased;
 }
 
-export function revealAt(time: number, l: VideoLength = 'short'): number {
-  return easeOut((time - LENGTHS[l].play - 0.2) / 0.45);
-}
-
 /** The time in the video at which the playhead reaches a timestamp of the run. */
 export function timeOf(ts: number, v: Run, l: VideoLength): number {
   const T = LENGTHS[l];
@@ -182,7 +171,6 @@ interface Layout {
   chart: { x0: number; x1: number; y0: number; y1: number };
   counter: { x: number; y: number; size: number; align: CanvasTextAlign };
   caption: { x: number; y: number; size: number };
-  reveal: { top: number; big: number; rankY: number; rankBelow: boolean; statsY: number; cols: number; rowH: number; statSize: number };
 }
 
 function layout(f: VideoFormat): Layout {
@@ -197,7 +185,6 @@ function layout(f: VideoFormat): Layout {
       chart: { x0: 96, x1: W - 96, y0: 340, y1: H - 120 },
       counter: { x: W - 96, y: 150, size: 120, align: 'right' },
       caption: { x: 96, y: 238, size: 34 },
-      reveal: { top: 270, big: 200, rankY: 540, rankBelow: false, statsY: 720, cols: 2, rowH: 84, statSize: 36 },
     };
   if (f === 'square')
     return {
@@ -209,7 +196,6 @@ function layout(f: VideoFormat): Layout {
       chart: { x0: 72, x1: W - 72, y0: 470, y1: H - 110 },
       counter: { x: 72, y: 280, size: 120, align: 'left' },
       caption: { x: 72, y: 362, size: 32 },
-      reveal: { top: 240, big: 170, rankY: 540, rankBelow: true, statsY: 750, cols: 1, rowH: 68, statSize: 34 },
     };
   return {
     W,
@@ -220,7 +206,6 @@ function layout(f: VideoFormat): Layout {
     chart: { x0: 80, x1: W - 80, y0: 750, y1: 1480 },
     counter: { x: 80, y: 470, size: 160, align: 'left' },
     caption: { x: 80, y: 585, size: 40 },
-    reveal: { top: 440, big: 190, rankY: 760, rankBelow: true, statsY: 1010, cols: 1, rowH: 96, statSize: 42 },
   };
 }
 
@@ -272,7 +257,7 @@ function followView(v: ReplayVideo, full: View, head: number, wide = 1): View {
   return { ta, tb, llo: Math.log(lo) - d * 0.16, lhi: Math.log(hi) + d * 0.16 };
 }
 
-/** How close the camera is, 1 (on the playhead) to 0 (the whole chart): it pulls back out before the reveal. */
+/** How close the camera is, 1 (on the playhead) to 0 (the whole chart): it pulls back out at the end of the replay. */
 export function zoomAt(time: number, l: VideoLength = 'short'): number {
   const T = LENGTHS[l];
   return 1 - easeInOut((time - (T.play - 1)) / 1);
@@ -342,19 +327,17 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   const playing = time >= T.hook;
   const running = playing ? v.pnlAt(head) : 0;
   const color = toneColor(running);
-  const r = v.reveal === false ? 0 : revealAt(time, l);
   const A = (a: number) => (g.globalAlpha = alpha * a);
 
   // the punch: a jolt that fades fast each time a trade lands
   let punch = 0;
   let punched: Marker | null = null;
-  if (playing && r < 1) {
+  if (playing) {
     for (const m of v.markers) {
       const dt = time - timeOf(Math.max(m.ts, v.from), v, l);
       const k = dt >= 0 ? Math.exp(-dt / 0.22) : 0;
       if (k > punch) [punch, punched] = [k, m];
     }
-    punch *= 1 - r;
   }
 
   A(1);
@@ -383,12 +366,9 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   g.fillStyle = MUTED;
   g.fillText(v.chainName, pad + sw + 22, L.headerY);
 
-  // the counter, the caption and the date clear away just before the reveal comes in, so the two never overlap
-  const out = v.reveal === false ? 1 : 1 - easeOut((time - (T.play - 0.25)) / 0.35);
-
   // the counter
-  if (playing && out > 0) {
-    A(easeOut((time - T.hook) / 0.3) * out);
+  if (playing) {
+    A(easeOut((time - T.hook) / 0.3));
     const text = v.counter ? v.counter(head) : v.money(running);
     fit(g, text, Math.round(L.counter.size * (1 + 0.1 * punch)), 650, L.counter.align === 'right' ? W - pad * 2 - sw - 260 : W - pad * 2);
     g.textAlign = L.counter.align;
@@ -398,11 +378,11 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   }
 
   // the latest caption, in the story cut
-  if (l === 'story' && playing && out > 0) {
+  if (l === 'story' && playing) {
     let cap: Caption | null = null;
     for (const c of v.captions) if (c.ts <= head) cap = c;
     if (cap) {
-      A(clamp01((time - timeOf(Math.max(cap.ts, v.from), v, l)) / 0.25) * out);
+      A(clamp01((time - timeOf(Math.max(cap.ts, v.from), v, l)) / 0.25));
       drawPill(g, L.caption.x, L.caption.y, cap.text, L.caption.size, cap.tone === 'pos' ? POS : cap.tone === 'neg' ? NEG : INK, W - pad * 2);
       A(1);
     }
@@ -477,8 +457,8 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   tag(nowPrice, playing ? color : INK, v.label(nowPrice * v.scale));
 
   // the playhead's date, held in one place under the chart and faded in
-  if (playing && out > 0) {
-    A(easeOut((time - T.hook) / 0.3) * out);
+  if (playing) {
+    A(easeOut((time - T.hook) / 0.3));
     font(g, f === 'portrait' ? 34 : 26, 500);
     g.fillStyle = MUTED;
     g.textAlign = 'left';
@@ -486,14 +466,6 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     A(1);
   }
 
-  // the reveal
-  if (r > 0) {
-    A(1);
-    A(0.95 * r);
-    g.fillStyle = BG;
-    g.fillRect(0, L.headerY + 30, W, H - L.headerY - 30);
-    drawReveal(g, v, L, r, time, T, alpha);
-  }
   A(1);
 }
 
@@ -536,93 +508,6 @@ function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker
   g.textAlign = 'center';
   g.fillText(text, 0, top + 29);
   g.restore();
-}
-
-function drawReveal(g: CanvasRenderingContext2D, v: ReplayVideo, L: Layout, r: number, time: number, T: Timing, alpha: number) {
-  const { W, pad } = L;
-  const R = L.reveal;
-  const color = toneColor(v.pnl);
-  const lift = (1 - r) * 40;
-  const maxW = W - pad * 2;
-  g.globalAlpha = alpha * r;
-  g.textAlign = 'left';
-
-  // the verdict, then the P&L, big
-  fit(g, v.verdict, Math.round(R.big * 0.26), 600, maxW);
-  g.fillStyle = INK2;
-  g.fillText(v.verdict, pad, R.top + lift);
-  const pnlY = R.top + R.big * 0.95 + lift;
-  fit(g, v.pnlText, R.big, 700, maxW);
-  g.fillStyle = color;
-  g.fillText(v.pnlText, pad - 6, pnlY);
-  const pw = g.measureText(v.pnlText).width;
-  if (v.roiText) {
-    const rs = Math.round(R.big * 0.25);
-    font(g, rs, 650);
-    const rw = g.measureText(v.roiText).width + rs * 0.9;
-    const fits = pad + pw + 30 + rw <= W - pad;
-    const rx = fits ? pad + pw + 30 : pad;
-    const ry = fits ? pnlY - rs * 1.45 : pnlY + rs * 0.6;
-    g.fillStyle = v.pnl > 0 ? X_LIGHT.posWash : v.pnl < 0 ? X_LIGHT.negWash : SUBTLE;
-    g.beginPath();
-    g.roundRect(rx, ry, rw, rs * 1.6, rs * 0.3);
-    g.fill();
-    g.fillStyle = color;
-    g.fillText(v.roiText, rx + rs * 0.45, ry + rs * 1.12);
-  }
-
-  // the rank pops in after the number
-  const rk = easeBack((time - T.play - 0.55) / 0.4);
-  if (rk > 0) {
-    const s = Math.round(R.statSize * 0.95);
-    g.save();
-    g.translate(pad, R.rankY);
-    g.globalAlpha = alpha * clamp01(rk);
-    font(g, s, 700);
-    const name = v.rank.name.toUpperCase();
-    const nw = g.measureText(name).width + s * 1.3;
-    g.fillStyle = INK;
-    g.beginPath();
-    g.roundRect(0, 0, nw, s * 2, s * 0.4);
-    g.fill();
-    g.fillStyle = '#ffffff';
-    g.fillText(name, s * 0.65, s * 1.36);
-    g.fillStyle = INK2;
-    if (R.rankBelow) {
-      fit(g, v.rank.line, s, 400, maxW);
-      g.fillText(v.rank.line, 0, s * 3.5);
-    } else {
-      fit(g, v.rank.line, s, 400, maxW - nw - 30);
-      g.fillText(v.rank.line, nw + 26, s * 1.36);
-    }
-    g.restore();
-  }
-
-  // the numbers
-  const st = clamp01((time - T.play - 0.9) / 0.4);
-  if (st > 0) {
-    g.globalAlpha = alpha * st;
-    const colW = (maxW - (R.cols - 1) * 40) / R.cols;
-    v.stats.slice(0, 4).forEach((s, i) => {
-      const x = pad + (i % R.cols) * (colW + 40);
-      const y = R.statsY + Math.floor(i / R.cols) * R.rowH;
-      font(g, R.statSize, 400);
-      g.fillStyle = MUTED;
-      g.textAlign = 'left';
-      g.fillText(s.k, x, y);
-      font(g, R.statSize, 650);
-      g.fillStyle = INK;
-      g.textAlign = 'right';
-      g.fillText(s.v, x + colW, y);
-      g.strokeStyle = LINE;
-      g.lineWidth = 2;
-      g.beginPath();
-      g.moveTo(x, y + R.statSize * 0.7);
-      g.lineTo(x + colW, y + R.statSize * 0.7);
-      g.stroke();
-    });
-  }
-  g.globalAlpha = alpha;
 }
 
 /** The sound track's cues: where each blip, tick and chord lands. */
