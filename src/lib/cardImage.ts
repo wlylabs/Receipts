@@ -1,4 +1,5 @@
 import type { Marker } from '../components/ReplayChart';
+import { X_LIGHT } from './palette';
 import { candleAt, drawCandles, range, type Candle } from './candles';
 
 export interface CardData {
@@ -23,11 +24,9 @@ export interface CardData {
 const W = 1080;
 const H = 1350;
 const PAD = 72;
-const INK = '#111113';
-const MUTED = '#71717a';
-const LINE = '#ebebee';
+const { ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = X_LIGHT;
 const SANS = "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif";
-const toneColor = (t: CardData['tone']) => (t === 'pos' ? '#16a34a' : t === 'neg' ? '#dc2626' : INK);
+const toneColor = (t: CardData['tone']) => (t === 'pos' ? POS : t === 'neg' ? NEG : INK);
 
 /** The finished run as a 1080×1350 PNG: the P&L, the chart with the run drawn in, the rank. */
 export async function cardPng(d: CardData): Promise<Blob> {
@@ -69,7 +68,7 @@ export async function cardPng(d: CardData): Promise<Blob> {
     const fits = PAD + pw + 24 + rw <= W - PAD;
     const rx = fits ? PAD + pw + 24 : PAD;
     const ry = fits ? 296 : 382;
-    g.fillStyle = d.tone === 'pos' ? '#ecfdf3' : d.tone === 'neg' ? '#fef2f2' : '#f7f7f8';
+    g.fillStyle = d.tone === 'pos' ? X_LIGHT.posWash : d.tone === 'neg' ? X_LIGHT.negWash : X_LIGHT.subtle;
     g.beginPath();
     g.roundRect(rx, ry, rw, 60, 12);
     g.fill();
@@ -106,7 +105,7 @@ export async function cardPng(d: CardData): Promise<Blob> {
     g.globalAlpha = 1;
     if (d.entry && d.entry > 0) {
       g.setLineDash([12, 12]);
-      g.strokeStyle = 'rgba(63,63,70,0.6)';
+      g.strokeStyle = X_LIGHT.entry;
       g.lineWidth = 2.5;
       g.beginPath();
       g.moveTo(cx0, Y(d.entry));
@@ -114,7 +113,7 @@ export async function cardPng(d: CardData): Promise<Blob> {
       g.stroke();
       g.setLineDash([]);
     }
-    drawCandles(g, k, d.step, X, Y, { up: '#16a34a', down: '#dc2626', body: 0.68 });
+    drawCandles(g, k, d.step, X, Y, { up: POS, down: NEG, body: 0.68 });
     for (const m of d.markers) {
       if (m.ts < t0) continue;
       const c = candleAt(k, d.step, m.ts);
@@ -122,7 +121,7 @@ export async function cardPng(d: CardData): Promise<Blob> {
       const dir = buy ? 1 : -1;
       const mx = X(c ? c[0] + d.step / 2 : m.ts);
       const my = (buy ? Y(Math.min(c?.[3] ?? m.price, m.price)) : Y(Math.max(c?.[2] ?? m.price, m.price))) + dir * 10;
-      g.fillStyle = buy ? '#16a34a' : '#dc2626';
+      g.fillStyle = buy ? POS : NEG;
       g.beginPath();
       g.moveTo(mx, my);
       g.lineTo(mx - 11, my + dir * 16);
@@ -145,7 +144,7 @@ export async function cardPng(d: CardData): Promise<Blob> {
   }
 
   // the rank
-  g.fillStyle = '#f7f7f8';
+  g.fillStyle = X_LIGHT.subtle;
   g.beginPath();
   g.roundRect(PAD, 990, W - PAD * 2, 110, 20);
   g.fill();
@@ -159,7 +158,7 @@ export async function cardPng(d: CardData): Promise<Blob> {
   g.fillStyle = '#ffffff';
   g.fillText(rank, PAD + 42, 1054);
   font(28, 400);
-  g.fillStyle = '#3f3f46';
+  g.fillStyle = X_LIGHT.ink2;
   let line = d.rank.line;
   while (line.length > 3 && g.measureText(line).width > W - PAD * 2 - rw - 72) line = line.slice(0, -2) + '…';
   g.fillText(line, PAD + rw + 48, 1055);

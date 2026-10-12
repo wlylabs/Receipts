@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react';
 import { candleAt, logTicks, range, upTo, type Candle } from '../lib/candles';
-import { price } from '../lib/format';
 import { cx } from '../lib/cx';
 
 export interface Marker {
@@ -35,6 +34,8 @@ export function ReplayChart({
   tone,
   bubble,
   entry,
+  scale = 1,
+  label,
   className,
 }: {
   candles: readonly Candle[];
@@ -51,6 +52,10 @@ export function ReplayChart({
   bubble?: string;
   /** A price to mark with a dashed line, e.g. the average buy. */
   entry?: number;
+  /** What the axis shows instead of price, e.g. market cap: price times `scale`. */
+  scale?: number;
+  /** Formats an axis value (already scaled). */
+  label: (v: number) => string;
   className?: string;
 }) {
   const geo = useMemo(() => {
@@ -62,8 +67,8 @@ export function ReplayChart({
     const lhi = Math.log(hi);
     const x = (ts: number) => ((ts - t0) / Math.max(1, t1 - t0)) * VW;
     const y = (p: number) => VH - PAD_BOTTOM - ((Math.log(Math.max(p, lo)) - llo) / Math.max(1e-9, lhi - llo)) * (VH - PAD_TOP - PAD_BOTTOM);
-    return { x, y, t0, t1, ticks: logTicks(lo, hi, 4) };
-  }, [candles, step, markers, to, entry]);
+    return { x, y, t0, t1, ticks: logTicks(lo * scale, hi * scale, 4).map((v) => v / scale) };
+  }, [candles, step, markers, to, entry, scale]);
 
   if (!geo) return <div className={cx('grid aspect-[5/2] place-items-center rounded-xl bg-subtle text-sm text-muted', className)}>Not enough trades for a chart yet.</div>;
 
@@ -152,16 +157,16 @@ export function ReplayChart({
       <div className="num relative w-14 shrink-0 text-[10px] text-muted sm:w-16" aria-hidden>
         {labels.map((p) => (
           <span key={p} className="absolute left-1.5 -translate-y-1/2" style={{ top: pct(geo.y(p), VH) }}>
-            {price(p)}
+            {label(p * scale)}
           </span>
         ))}
         {entry !== undefined && entry > 0 && (
           <span className="absolute left-0.5 -translate-y-1/2 rounded bg-ink-2 px-1 py-0.5 font-medium text-[var(--surface)]" style={{ top: pct(geo.y(entry), VH) }}>
-            {price(entry)}
+            {label(entry * scale)}
           </span>
         )}
         <span className="absolute left-0.5 -translate-y-1/2 rounded px-1 py-0.5 font-semibold text-white" style={{ top: pct(hy, VH), background: color }}>
-          {price(now)}
+          {label(now * scale)}
         </span>
       </div>
     </div>

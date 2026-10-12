@@ -25,6 +25,12 @@ export function usd(n: number | null | undefined, opts: { signed?: boolean } = {
   }).format(n);
 }
 
+/** A market cap, short: $812, $45.2K, $2.44M. */
+export function mcap(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n) || n <= 0) return '-';
+  return nf({ style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', notation: 'compact', maximumSignificantDigits: 3 }).format(n);
+}
+
 export function compact(n: number): string {
   if (!Number.isFinite(n)) return '-';
   return nf({ notation: 'compact', maximumFractionDigits: 2 }).format(n);

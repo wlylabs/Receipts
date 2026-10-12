@@ -12,7 +12,7 @@ import { bucket } from '../lib/candles';
 import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
 import type { Trade, TraderReceipts } from '../lib/types';
-import { compact, dateTime, day, pct, price, short, span, usd } from '../lib/format';
+import { compact, dateTime, day, mcap, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_URL } from '../lib/site';
 import { saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
@@ -66,6 +66,11 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
   // the same stretch in candles, merged down to a count that stays readable on a phone
   const chart = useMemo(() => bucket(r.candles.filter(([ts]) => ts >= series[0]![0]), CANDLES), [r.candles, series]);
   const entry = p.tokensIn > 0 ? p.usdIn / p.tokensIn : undefined;
+  // DEX traders read market cap more than price: the supply turns one into the other
+  const supply = token.mcapUsd && token.priceUsd > 0 ? token.mcapUsd / token.priceUsd : 0;
+  const scale = supply || 1;
+  const label = supply ? mcap : price;
+  const at = (pr: number) => (supply ? `${mcap(pr * supply)} MC` : price(pr));
   const done = !replay.playing;
   const head = replay.t < 1 ? from + (to - from) * replay.t : undefined;
   const running = useMemo(() => {
@@ -108,7 +113,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     from,
     to,
     markers: markers.length <= 60 ? markers : [],
-    captions: trades.map((t) => ({ ts: t.ts, text: `${t.side === 'buy' ? 'Buy' : 'Sell'} ${usd(t.usd)} at ${price(t.priceUsd)}`, tone: t.side === 'buy' ? ('pos' as const) : ('neg' as const) })),
+    captions: trades.map((t) => ({ ts: t.ts, text: `${t.side === 'buy' ? 'Buy' : 'Sell'} ${usd(t.usd)} at ${at(t.priceUsd)}`, tone: t.side === 'buy' ? ('pos' as const) : ('neg' as const) })),
     pnlAt: (ts) => {
       if (ts >= to) return p.pnl;
       const seen = trades.filter((t) => t.ts <= ts);
@@ -120,7 +125,8 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     rank,
     stats: stats.slice(0, 4),
     money,
-    price,
+    scale,
+    label,
     date: day,
   };
 
@@ -181,7 +187,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
               <span className="min-w-0">
                 <span className="block truncate text-[14px] font-semibold">{token.symbol}</span>
                 <span className="block truncate text-[12px] text-muted">
-                  {price(token.priceUsd)} · {r.candle} candles
+                  {supply ? `MC ${mcap(token.mcapUsd)}` : price(token.priceUsd)} · {r.candle} candles
                 </span>
               </span>
             </Link>
@@ -195,7 +201,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
             </div>
           </div>
           <div className="relative mt-3">
-            <ReplayChart candles={chart.candles} step={chart.step} entry={entry} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
+            <ReplayChart candles={chart.candles} step={chart.step} entry={entry} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
           </div>
 
           {done && (

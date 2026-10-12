@@ -1,5 +1,6 @@
 import type { Marker } from '../components/ReplayChart';
 import { renderSound, SAMPLE_RATE, type Cue } from './videoSound';
+import { X_LIGHT } from './palette';
 import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './candles';
 
 /**
@@ -69,18 +70,14 @@ export interface ReplayVideo {
   rank: { name: string; line: string };
   stats: { k: string; v: string }[];
   money: (n: number) => string;
-  /** A token price, for the price axis. */
-  price: (n: number) => string;
+  /** What the axis shows instead of price, e.g. market cap: price times `scale`. */
+  scale: number;
+  /** Formats an axis value (already scaled). */
+  label: (n: number) => string;
   date: (ts: number) => string;
 }
 
-const INK = '#111113';
-const INK2 = '#3f3f46';
-const MUTED = '#71717a';
-const LINE = '#ebebee';
-const SUBTLE = '#f7f7f8';
-const POS = '#16a34a';
-const NEG = '#dc2626';
+const { bg: BG, ink: INK, ink2: INK2, muted: MUTED, line: LINE, subtle: SUBTLE, pos: POS, neg: NEG } = X_LIGHT;
 const SANS = "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif";
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
@@ -210,7 +207,7 @@ function geometry(v: ReplayVideo, L: Layout) {
     }
     return s.at(-1)![1];
   };
-  return { s, t0, x1, X, Y, at, level, ticks: logTicks(lo, hi, 4) };
+  return { s, t0, x1, X, Y, at, level, ticks: logTicks(lo * v.scale, hi * v.scale, 4).map((t) => t / v.scale) };
 }
 
 /** One frame at `time` seconds. */
@@ -234,7 +231,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   const A = (a: number) => (g.globalAlpha = alpha * a);
 
   A(1);
-  g.fillStyle = '#ffffff';
+  g.fillStyle = BG;
   g.fillRect(0, 0, W, H);
   g.textBaseline = 'alphabetic';
 
@@ -306,7 +303,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.stroke();
     if (tagYs.some((y) => Math.abs(y - geo.Y(t)) < 44 * big)) continue;
     g.fillStyle = MUTED;
-    g.fillText(v.price(t), axisX, geo.Y(t) + 8);
+    g.fillText(v.label(t * v.scale), axisX, geo.Y(t) + 8);
   }
   if (playing && head > v.from) {
     A(0.06);
@@ -316,7 +313,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   }
   if (v.entry && v.entry > 0) {
     g.setLineDash([12, 12]);
-    g.strokeStyle = 'rgba(63,63,70,0.6)';
+    g.strokeStyle = X_LIGHT.entry;
     g.lineWidth = 2.5;
     g.beginPath();
     g.moveTo(x0, geo.Y(v.entry));
@@ -338,8 +335,8 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     }
   }
 
-  if (v.entry && v.entry > 0 && Math.abs(geo.Y(v.entry) - geo.Y(nowPrice)) > 44 * big) tag(v.entry, INK2, v.price(v.entry));
-  tag(nowPrice, playing ? color : INK, v.price(nowPrice));
+  if (v.entry && v.entry > 0 && Math.abs(geo.Y(v.entry) - geo.Y(nowPrice)) > 44 * big) tag(v.entry, INK2, v.label(v.entry * v.scale));
+  tag(nowPrice, playing ? color : INK, v.label(nowPrice * v.scale));
 
   // the playhead
   if (playing && head > v.from && p < 1) {
@@ -367,7 +364,8 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   // the reveal
   if (r > 0) {
     A(1);
-    g.fillStyle = `rgba(255,255,255,${0.95 * r})`;
+    A(0.95 * r);
+    g.fillStyle = BG;
     g.fillRect(0, L.headerY + 30, W, H - L.headerY - 30);
     drawReveal(g, v, L, r, time, T, alpha);
   }
@@ -440,7 +438,7 @@ function drawReveal(g: CanvasRenderingContext2D, v: ReplayVideo, L: Layout, r: n
     const fits = pad + pw + 30 + rw <= W - pad;
     const rx = fits ? pad + pw + 30 : pad;
     const ry = fits ? pnlY - rs * 1.45 : pnlY + rs * 0.6;
-    g.fillStyle = v.pnl > 0 ? '#ecfdf3' : v.pnl < 0 ? '#fef2f2' : SUBTLE;
+    g.fillStyle = v.pnl > 0 ? X_LIGHT.posWash : v.pnl < 0 ? X_LIGHT.negWash : SUBTLE;
     g.beginPath();
     g.roundRect(rx, ry, rw, rs * 1.6, rs * 0.3);
     g.fill();
