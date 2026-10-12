@@ -13,7 +13,7 @@ const MAX_CAPTIONS = 8;
 /**
  * A video of the token's whole market, launch to now: every candle the feed has, merged down to a
  * readable count, the market cap counting up with the playhead, a caption at launch, at each new
- * high, at the top and on the way down, then where it stands now.
+ * high, at the top and on the way down. It ends on the whole chart, with no result card.
  */
 export function marketStory(r: TokenReceipts, now = Date.now() / 1000): { video: ReplayVideo; fileBase: string } | null {
   const { token } = r;
@@ -66,6 +66,7 @@ export function marketStory(r: TokenReceipts, now = Date.now() / 1000): { video:
     captions: captions.sort((a, b) => a.ts - b.ts),
     pnlAt: (ts) => priceAt(ts) - launch,
     counter: (ts) => at(priceAt(ts)),
+    reveal: false,
     pnl: live - launch,
     pnlText: at(live),
     roiText: sinceLaunch(run),

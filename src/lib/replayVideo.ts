@@ -64,6 +64,8 @@ export interface ReplayVideo {
   pnlAt: (ts: number) => number;
   /** What the counter reads with the playhead at a time, e.g. the market cap; the P&L when left out. */
   counter?: (ts: number) => string;
+  /** False ends on the whole chart, counter and date held, with no result card over it. */
+  reveal?: boolean;
   pnl: number;
   pnlText: string;
   roiText: string | null;
@@ -340,7 +342,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   const playing = time >= T.hook;
   const running = playing ? v.pnlAt(head) : 0;
   const color = toneColor(running);
-  const r = revealAt(time, l);
+  const r = v.reveal === false ? 0 : revealAt(time, l);
   const A = (a: number) => (g.globalAlpha = alpha * a);
 
   // the punch: a jolt that fades fast each time a trade lands
@@ -382,7 +384,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   g.fillText(v.chainName, pad + sw + 22, L.headerY);
 
   // the counter, the caption and the date clear away just before the reveal comes in, so the two never overlap
-  const out = 1 - easeOut((time - (T.play - 0.25)) / 0.35);
+  const out = v.reveal === false ? 1 : 1 - easeOut((time - (T.play - 0.25)) / 0.35);
 
   // the counter
   if (playing && out > 0) {
