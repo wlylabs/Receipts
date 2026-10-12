@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 /** A bottom sheet on phones, a centred dialog on wider screens. */
-export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
+export function Sheet({ open, onClose, title, wide = false, children }: { open: boolean; onClose: () => void; title: string; wide?: boolean; children: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
@@ -21,7 +22,8 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     };
   }, [open, onClose]);
   if (!open) return null;
-  return (
+  // in <body>, so no transformed ancestor can trap the fixed overlay
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" role="presentation">
       <div className="fade-in absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={onClose} aria-hidden />
       <div
@@ -30,7 +32,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="sheet-in relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-bg outline-none sm:max-w-[460px] sm:rounded-2xl"
+        className={`sheet-in relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl bg-bg outline-none sm:rounded-2xl ${wide ? 'sm:max-w-[680px]' : 'sm:max-w-[460px]'}`}
       >
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
           <span className="mx-auto h-1 w-10 rounded-full bg-line-strong sm:hidden" aria-hidden />
@@ -41,6 +43,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
         </div>
         <div className="overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4 sm:px-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

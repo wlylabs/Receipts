@@ -12,7 +12,7 @@ import { position, priceAt, rankOf } from '../lib/receipts';
 import { pushRecent } from '../lib/recent';
 import { CHAINS } from '../lib/chains';
 import type { Trade, TraderReceipts } from '../lib/types';
-import { compact, dateTime, pct, price, short, span, usd } from '../lib/format';
+import { compact, dateTime, day, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_HOST, SITE_URL } from '../lib/site';
 import { saveFile, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
@@ -21,6 +21,8 @@ import { Failure, Loading } from './States';
 import { Holdings } from './Holdings';
 import { ReplayChart, type Marker } from './ReplayChart';
 import { ResultCard, type Stat } from './ResultCard';
+import { VideoExport } from './VideoExport';
+import type { ReplayVideo } from '../lib/replayVideo';
 import { TokenImage } from './TokenImage';
 
 type Call = 'profit' | 'rekt' | 'skip';
@@ -124,6 +126,30 @@ function TraderGame({ r }: { r: TraderReceipts }) {
   };
 
   const markers: Marker[] = trades.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side }));
+  const video: ReplayVideo = {
+    kicker: `WALLET ${short(r.owner)}`,
+    symbol: token.symbol,
+    chainName: token.chainName,
+    hook: [`${short(r.owner)} on ${token.symbol}`, 'profit or rekt →'],
+    series,
+    from,
+    to,
+    markers: markers.length <= 60 ? markers : [],
+    pnlAt: (ts) => {
+      if (ts >= to) return p.pnl;
+      const seen = trades.filter((t) => t.ts <= ts);
+      return seen.length ? position(seen, priceAt(series, ts, token.priceUsd)).pnl : 0;
+    },
+    pnl: p.pnl,
+    pnlText: usd(p.pnl, { signed: true }),
+    roiText: p.roi === null ? null : pct(p.roi, { signed: true }),
+    rank,
+    stats: stats.slice(0, 4),
+    site: SITE_HOST,
+    money: (n) => usd(n, { signed: true }),
+    date: day,
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -214,10 +240,11 @@ function TraderGame({ r }: { r: TraderReceipts }) {
           {done && (
             <div className="mt-4 border-t border-line px-1 pt-4" role="status">
               <ResultCard kicker={`${short(r.owner)} on ${token.symbol}`} pnl={usd(p.pnl, { signed: true })} roi={p.roi === null ? 'no buys seen' : pct(p.roi, { signed: true })} tone={toneOf(p.pnl)} rank={rank} stats={stats}>
-                <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <button type="button" onClick={replay.play} className="btn btn-quiet">
-                    <RotateCcw className="size-4" aria-hidden /> <span className="hidden sm:inline">Replay</span>
+                    <RotateCcw className="size-4" aria-hidden /> Replay
                   </button>
+                  <VideoExport video={video} fileBase={`${r.owner.slice(0, 6)}-${token.symbol.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token'}`} />
                   <button type="button" onClick={save} disabled={saving} className="btn btn-quiet">
                     {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
                     Image

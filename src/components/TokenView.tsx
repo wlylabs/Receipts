@@ -19,6 +19,8 @@ import { cx } from '../lib/cx';
 import { Failure, Loading } from './States';
 import { ReplayChart, type Marker } from './ReplayChart';
 import { ResultCard, type Stat } from './ResultCard';
+import { VideoExport } from './VideoExport';
+import type { ReplayVideo } from '../lib/replayVideo';
 import { TokenImage } from './TokenImage';
 
 const BAGS = [50, 100, 500, 1000];
@@ -152,6 +154,32 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
       ]
     : [];
 
+  const video: ReplayVideo | null =
+    run && rank
+      ? {
+          kicker: 'PAPER TRADE',
+          symbol: token.symbol,
+          chainName: token.chainName,
+          hook: [`${usd(run.amount)} in ${token.symbol}`, `bought ${day(series[run.entry]![0])} →`],
+          series,
+          from: series[run.entry]![0],
+          to: series[run.exit]![0],
+          markers: [
+            { ts: series[run.entry]![0], price: run.sim.entryPrice, kind: 'buy', label: 'Buy' },
+            { ts: series[run.exit]![0], price: run.sim.exitPrice, kind: 'sell', label: run.holdNow ? 'Now' : 'Sell' },
+          ],
+          pnlAt: (ts) => (ts >= series[run.exit]![0] ? run.sim.pnl : run.sim.tokens * priceAt(series, ts, token.priceUsd) - run.amount),
+          pnl: run.sim.pnl,
+          pnlText: usd(run.sim.pnl, { signed: true }),
+          roiText: pct(run.sim.roi, { signed: true }),
+          rank,
+          stats: stats.slice(0, 4),
+          site: SITE_HOST,
+          money: (n) => usd(n, { signed: true }),
+          date: day,
+        }
+      : null;
+
   const share = async () => {
     if (!run) return;
     const res = await shareLink(
@@ -257,10 +285,11 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
           {finished && run && rank && (
             <div className="mt-4 border-t border-line px-1 pt-4" role="status">
               <ResultCard kicker={`Paper trade · ${token.symbol}`} pnl={usd(run.sim.pnl, { signed: true })} roi={pct(run.sim.roi, { signed: true })} tone={toneOf(run.sim.pnl)} rank={rank} stats={stats}>
-                <div className="mt-4 grid grid-cols-3 gap-2">
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <button type="button" onClick={replay.play} className="btn btn-quiet">
-                    <RotateCcw className="size-4" aria-hidden /> <span className="hidden sm:inline">Replay</span>
+                    <RotateCcw className="size-4" aria-hidden /> Replay
                   </button>
+                  {video && <VideoExport video={video} fileBase={`${token.symbol.toLowerCase().replace(/[^a-z0-9]/g, '') || 'token'}-paper-trade`} />}
                   <button type="button" onClick={save} disabled={saving} className="btn btn-quiet">
                     {saving ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
                     Image
