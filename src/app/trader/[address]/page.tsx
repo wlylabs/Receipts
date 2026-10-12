@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { ROUTES } from '../../../lib/site';
 
 type Props = { params: Promise<{ address: string }>; searchParams: Promise<{ ca?: string | string[] }> };
 
@@ -6,5 +7,6 @@ type Props = { params: Promise<{ address: string }>; searchParams: Promise<{ ca?
 export default async function OldTraderPage({ params, searchParams }: Props) {
   const { address } = await params;
   const { ca } = await searchParams;
-  redirect(typeof ca === 'string' ? `/wallet/${address}/?ca=${encodeURIComponent(ca)}` : `/wallet/${address}/`);
+  const a = decodeURIComponent(address);
+  redirect(typeof ca === 'string' && ca ? ROUTES.trader(a, ca) : ROUTES.wallet(a));
 }

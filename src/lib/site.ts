@@ -21,7 +21,8 @@ export const SITE_DESCRIPTION =
 
 export const ROUTES = {
   home: '/',
-  wallet: (a: string) => `/wallet/${a}/`,
-  trader: (a: string, ca: string) => `/wallet/${a}/?ca=${encodeURIComponent(ca)}`,
-  token: (ca: string) => `/token/${ca}/`,
+  // everything lives on the one page; what it shows is in the query
+  wallet: (a: string) => `/?wallet=${encodeURIComponent(a)}`,
+  trader: (a: string, ca: string) => `/?wallet=${encodeURIComponent(a)}&ca=${encodeURIComponent(ca)}`,
+  token: (ca: string) => `/?ca=${encodeURIComponent(ca)}`,
 };

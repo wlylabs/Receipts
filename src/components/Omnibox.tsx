@@ -14,9 +14,9 @@ import type { ApiError, Resolved } from '../lib/types';
  * One box for both: a token CA opens its top traders, a wallet opens the replay of its trades. What
  * was pasted is asked of DexScreener, so nobody has to say which it is.
  */
-export function Omnibox({ autoFocus = false, size = 'lg' }: { autoFocus?: boolean; size?: 'lg' | 'sm' }) {
+export function Omnibox({ autoFocus = false, size = 'lg', initial = '' }: { autoFocus?: boolean; size?: 'lg' | 'sm'; initial?: string }) {
   const router = useRouter();
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -40,6 +40,8 @@ export function Omnibox({ autoFocus = false, size = 'lg' }: { autoFocus?: boolea
       const body = (await res.json()) as Resolved | ApiError;
       if (!res.ok || !('kind' in body)) throw new Error('error' in body ? body.error : 'resolve');
       router.push(body.kind === 'token' ? ROUTES.token(body.address) : ROUTES.wallet(body.address));
+      // the page stays; it shows the result under the box
+      setBusy(false);
     } catch (e) {
       setBusy(false);
       setError((e as Error).message === 'resolve' ? 'Couldn’t check that address. Try again.' : (e as Error).message);

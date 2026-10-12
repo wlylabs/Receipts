@@ -1,7 +1,47 @@
+import type { Metadata } from 'next';
 import { History, LineChart } from 'lucide-react';
 import { Omnibox } from '../components/Omnibox';
+import { TokenView } from '../components/TokenView';
+import { TraderView } from '../components/TraderView';
+import { cleanAddress } from '../lib/receipts';
+import { short } from '../lib/format';
 
-export default function HomePage() {
+type Props = { searchParams: Promise<{ ca?: string | string[]; wallet?: string | string[] }> };
+
+const one = (v: string | string[] | undefined) => cleanAddress(typeof v === 'string' ? v : '');
+
+export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
+  const q = await searchParams;
+  const ca = one(q.ca);
+  const wallet = one(q.wallet);
+  if (wallet) return { title: `Replay ${short(wallet)}`, robots: { index: false } };
+  if (ca) return { title: `Top traders of ${short(ca)}`, robots: { index: false } };
+  return {};
+}
+
+/**
+ * The whole app on one page: the paste box, and under it whatever was pasted. A token CA shows its
+ * all-time chart and top 3 traders; a wallet shows its tokens, then the replay of one.
+ */
+export default async function HomePage({ searchParams }: Props) {
+  const q = await searchParams;
+  const ca = one(q.ca);
+  const wallet = one(q.wallet);
+  const showing = wallet || ca;
+
+  if (showing) {
+    return (
+      <>
+        <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-6">
+          <div id="paste" className="mx-auto max-w-2xl scroll-mt-24">
+            <Omnibox key={showing} size="sm" initial={showing} />
+          </div>
+        </div>
+        {wallet ? <TraderView key={`${wallet}:${ca}`} address={wallet} ca={ca} /> : <TokenView key={ca} ca={ca} />}
+      </>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-6xl px-4 sm:px-6">
       <section className="mx-auto max-w-2xl pb-10 pt-12 text-center sm:pt-20" aria-labelledby="hero">
