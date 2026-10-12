@@ -2,7 +2,7 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ClipboardPaste, Loader2, Search, X } from 'lucide-react';
+import { ArrowRight, ClipboardPaste, History, LineChart, Loader2, Search, X } from 'lucide-react';
 import { cleanAddress, isAddress, isWallet } from '../lib/receipts';
 import { useStored } from '../hooks/useStored';
 import { KEYS } from '../lib/game';
@@ -14,10 +14,26 @@ import type { ApiError, Resolved } from '../lib/types';
 
 export type PasteKind = 'token' | 'wallet';
 
-const COPY: Record<PasteKind, { label: string; placeholder: string; empty: string; bad: string }> = {
-  token: { label: 'Token CA', placeholder: 'Paste a token CA', empty: 'Paste a token CA.', bad: 'That doesn’t look like a Solana or 0x token address.' },
-  wallet: { label: 'Wallet', placeholder: 'Paste a wallet address', empty: 'Paste a wallet address.', bad: 'That doesn’t look like a Solana or 0x wallet address.' },
+const COPY: Record<PasteKind, { label: string; title: string; body: string; placeholder: string; empty: string; bad: string }> = {
+  token: {
+    label: 'Token CA',
+    title: 'Token CA',
+    body: 'See the market right now, every candle, and its top 3 gainers and losers, ready to copy or turn into a video.',
+    placeholder: 'Paste a token CA',
+    empty: 'Paste a token CA.',
+    bad: 'That doesn’t look like a Solana or 0x token address.',
+  },
+  wallet: {
+    label: 'Wallet',
+    title: 'Wallet address',
+    body: 'Pick a token they traded, watch their trades replay on the chart, then turn it into a video.',
+    placeholder: 'Paste a wallet address',
+    empty: 'Paste a wallet address.',
+    bad: 'That doesn’t look like a Solana or 0x wallet address.',
+  },
 };
+
+const ICON: Record<PasteKind, React.ReactNode> = { token: <LineChart className="size-4" />, wallet: <History className="size-4" /> };
 
 /**
  * The paste box, with the choice of what is pasted: a token CA opens its top traders, a wallet
@@ -100,20 +116,47 @@ export function Omnibox({ autoFocus = false, size = 'lg', initial = '', onGo }: 
   const lg = size === 'lg';
   return (
     <form onSubmit={submit} noValidate>
-      <div role="radiogroup" aria-label="What are you pasting?" className={cx('mb-2 inline-flex rounded-[10px] bg-subtle p-0.5', lg ? 'text-[13.5px]' : 'text-[13px]')}>
-        {(Object.keys(COPY) as PasteKind[]).map((k) => (
-          <button
-            key={k}
-            type="button"
-            role="radio"
-            aria-checked={kind === k}
-            onClick={() => pick(k)}
-            className={cx('min-h-9 rounded-lg px-3.5 font-medium transition-colors', kind === k ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]' : 'text-muted hover:text-ink')}
-          >
-            {COPY[k].label}
-          </button>
-        ))}
-      </div>
+      {lg ? (
+        // on the home page the choice is the two cards that say what each one does
+        <div role="radiogroup" aria-label="What are you pasting?" className="mb-3 grid gap-2 sm:grid-cols-2">
+          {(Object.keys(COPY) as PasteKind[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="radio"
+              aria-checked={kind === k}
+              onClick={() => pick(k)}
+              className={cx(
+                'flex gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors',
+                kind === k ? 'border-ink bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.06)]' : 'border-line hover:bg-hover',
+              )}
+            >
+              <span className={cx('mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg', kind === k ? 'bg-ink text-on-ink' : 'bg-subtle text-ink-2')} aria-hidden>
+                {ICON[k]}
+              </span>
+              <span>
+                <span className="block text-[13.5px] font-semibold">{COPY[k].title}</span>
+                <span className="mt-0.5 block text-[13px] leading-snug text-muted">{COPY[k].body}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div role="radiogroup" aria-label="What are you pasting?" className="mb-2 inline-flex rounded-[10px] bg-subtle p-0.5 text-[13px]">
+          {(Object.keys(COPY) as PasteKind[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="radio"
+              aria-checked={kind === k}
+              onClick={() => pick(k)}
+              className={cx('min-h-9 rounded-lg px-3.5 font-medium transition-colors', kind === k ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]' : 'text-muted hover:text-ink')}
+            >
+              {COPY[k].label}
+            </button>
+          ))}
+        </div>
+      )}
       <label htmlFor="omnibox" className="sr-only">
         {copy.label}
       </label>

@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { History, LineChart } from 'lucide-react';
 import { Omnibox } from '../components/Omnibox';
 import { TokenView } from '../components/TokenView';
 import { TraderView } from '../components/TraderView';
@@ -48,23 +47,7 @@ export default async function HomePage({ searchParams }: Props) {
         <div id="paste" className="mt-8 scroll-mt-24 text-left">
           <Omnibox />
         </div>
-        <div className="mt-4 grid gap-2 text-left sm:grid-cols-2">
-          <Mode icon={<LineChart className="size-4" />} title="Token CA" body="See the market right now, every candle, and its top 3 gainers and losers, ready to copy or turn into a video." />
-          <Mode icon={<History className="size-4" />} title="Wallet address" body="Pick a token they traded, watch their trades replay on the chart, then turn it into a video." />
-        </div>
       </section>
-    </div>
-  );
-}
-
-function Mode({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
-  return (
-    <div className="flex gap-3 rounded-xl border border-line px-3.5 py-3">
-      <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg bg-subtle text-ink-2">{icon}</span>
-      <div>
-        <p className="text-[13.5px] font-semibold">{title}</p>
-        <p className="mt-0.5 text-[13px] leading-snug text-muted">{body}</p>
-      </div>
     </div>
   );
 }
