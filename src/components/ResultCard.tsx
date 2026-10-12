@@ -38,11 +38,12 @@ export function ResultCard({
         <span className="rounded-md bg-ink px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.06em] text-on-ink">{rank.name}</span>
         <span className="text-[13px] leading-snug text-ink-2">{rank.line}</span>
       </div>
-      <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-2 text-[13px] sm:grid-cols-2">
+      {/* two columns on phones too: half the rows to scroll past */}
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px]">
         {stats.map((s) => (
-          <div key={s.k} className="flex justify-between gap-2 border-b border-line pb-1.5">
-            <dt className="text-muted">{s.k}</dt>
-            <dd className={cx('num text-right font-medium', s.tone === 'pos' && 'text-pos', s.tone === 'neg' && 'text-neg')}>{s.v}</dd>
+          <div key={s.k} className="min-w-0 border-b border-line pb-1.5 sm:flex sm:justify-between sm:gap-2">
+            <dt className="truncate text-[12px] text-muted sm:text-[13px]">{s.k}</dt>
+            <dd className={cx('num truncate font-medium sm:text-right', s.tone === 'pos' && 'text-pos', s.tone === 'neg' && 'text-neg')}>{s.v}</dd>
           </div>
         ))}
       </dl>

@@ -368,11 +368,8 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
         </section>
       </div>
 
-      {mine.length > 0 && (
-        <section className="mt-6" aria-labelledby="positions">
-          <h2 id="positions" className="text-[14px] font-semibold">
-            My {token.symbol} paper trades
-          </h2>
+      <Board r={r} mine={mine.length}>
+        {(more) => (
           <div className="panel mt-2 overflow-x-auto">
             <table className="w-full text-[13px]">
               <thead className="text-left text-muted">
@@ -388,7 +385,7 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
-                {mine.map((p) => {
+                {(more ? mine : mine.slice(0, ROWS)).map((p) => {
                   const pnl = paperPnl(p, token.priceUsd) ?? 0;
                   return (
                     <tr key={p.id}>
@@ -414,10 +411,8 @@ function PaperTradeDesk({ r }: { r: TokenReceipts }) {
               </tbody>
             </table>
           </div>
-        </section>
-      )}
-
-      <Board r={r} />
+        )}
+      </Board>
     </div>
   );
 }
@@ -510,36 +505,54 @@ function Scrub({
   );
 }
 
-function Board({ r }: { r: TokenReceipts }) {
-  const [side, setSide] = useState<'top' | 'worst'>('top');
-  const rows = side === 'top' ? r.board.slice(0, 10) : [...r.board].reverse().slice(0, 10);
+/** Rows shown before "show all", so the page ends near the ticket. */
+const ROWS = 5;
+
+/** The traders' board and this browser's own trades on the token, one tab at a time. */
+function Board({ r, mine, children }: { r: TokenReceipts; mine: number; children: (more: boolean) => React.ReactNode }) {
+  const [tab, setTab] = useState<'top' | 'worst' | 'mine'>(mine > 0 ? 'mine' : 'top');
+  const [more, setMore] = useState(false);
+  const side = tab === 'mine' && mine === 0 ? 'top' : tab;
+  const all = side === 'top' ? r.board.slice(0, 10) : [...r.board].reverse().slice(0, 10);
+  const rows = more ? all : all.slice(0, ROWS);
+  const total = side === 'mine' ? mine : all.length;
+  const tabs = [
+    { id: 'top' as const, label: 'Top P&L' },
+    { id: 'worst' as const, label: 'Worst P&L' },
+    ...(mine > 0 ? [{ id: 'mine' as const, label: `Mine · ${mine}` }] : []),
+  ];
   return (
-    <section className="mt-8" aria-labelledby="board-title">
+    <section className="mt-6" aria-labelledby="board-title">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="board-title" className="text-[14px] font-semibold">
-            Recent traders
+            {side === 'mine' ? `My ${r.token.symbol} paper trades` : 'Recent traders'}
           </h2>
           <p className="mt-0.5 text-[12.5px] text-muted">
-            {r.board.length} wallets in the latest {r.window.trades} trades ({span(r.window.to - r.window.from)}). Tap one to replay its trades.
+            {side === 'mine' ? 'Kept in this browser.' : `${r.board.length} wallets in the latest ${r.window.trades} trades (${span(r.window.to - r.window.from)}). Tap one to replay its trades.`}
           </p>
         </div>
-        <div role="tablist" aria-label="Order" className="flex rounded-lg bg-subtle p-0.5">
-          {(['top', 'worst'] as const).map((s) => (
+        <div role="tablist" aria-label="List" className="flex rounded-lg bg-subtle p-0.5">
+          {tabs.map((t) => (
             <button
-              key={s}
+              key={t.id}
               type="button"
               role="tab"
-              aria-selected={side === s}
-              onClick={() => setSide(s)}
-              className={cx('h-8 rounded-md px-3 text-[12.5px] font-medium', side === s ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
+              aria-selected={side === t.id}
+              onClick={() => {
+                setTab(t.id);
+                setMore(false);
+              }}
+              className={cx('h-8 rounded-md px-3 text-[12.5px] font-medium', side === t.id ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
             >
-              {s === 'top' ? 'Top P&L' : 'Worst P&L'}
+              {t.label}
             </button>
           ))}
         </div>
       </div>
-      {r.board.length === 0 ? (
+      {side === 'mine' ? (
+        children(more)
+      ) : r.board.length === 0 ? (
         <p className="panel mt-2 px-4 py-6 text-[13px] text-muted">No recent trades in the feed.</p>
       ) : (
         <div className="panel mt-2 overflow-x-auto">
@@ -578,6 +591,11 @@ function Board({ r }: { r: TokenReceipts }) {
             </tbody>
           </table>
         </div>
+      )}
+      {total > ROWS && (
+        <button type="button" onClick={() => setMore((m) => !m)} className="mt-2 w-full py-2 text-[13px] text-muted hover:text-ink">
+          {more ? 'Show less' : `Show all ${total}`}
+        </button>
       )}
     </section>
   );
