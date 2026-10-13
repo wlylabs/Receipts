@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { originOf, profitLink, tokenPlug, traderPlug } from './fmath';
+import { originOf, profitLink, referralUrl, tokenPlug, traderPlug } from './referral';
 import type { PositionCalc, TokenInfo } from './types';
 
 const ORIGIN = 'https://fmath.example';
+const REF = 'https://fomo.family/r/willydetrade';
+const LINKS = { referral: REF, fmath: ORIGIN };
 
 const token: TokenInfo = {
   chain: 'solana',
@@ -46,6 +48,14 @@ const position = (p: Partial<PositionCalc>): PositionCalc => ({
   ...p,
 });
 
+describe('referralUrl', () => {
+  it('defaults to the FMath referral, takes another, and turns off', () => {
+    expect(referralUrl(undefined)).toBe(REF);
+    expect(referralUrl('fomo.family/r/someone')).toBe('https://fomo.family/r/someone');
+    expect(referralUrl(' OFF ')).toBeNull();
+  });
+});
+
 describe('originOf', () => {
   it('takes a bare domain or a full URL, and nothing without one', () => {
     expect(originOf('fmath.vercel.app')).toBe('https://fmath.vercel.app');
@@ -76,45 +86,48 @@ describe('profitLink', () => {
 });
 
 describe('tokenPlug', () => {
-  it('pitches the buy decision on a fomo chain', () => {
-    const plug = tokenPlug(token, ORIGIN)!;
-    expect(plug.title).toBe('Thinking of buying $DOG at $1M?');
-    expect(new URL(plug.href).searchParams.get('entryMcap')).toBe('1000000');
+  it('pitches the discount on the buy someone is weighing', () => {
+    const plug = tokenPlug(token, LINKS)!;
+    expect(plug.title).toBe('Buying $DOG at $1M? Pay 10% less to do it.');
+    expect(plug.href).toBe(REF);
+    expect(new URL(plug.calc!.href).searchParams.get('entryMcap')).toBe('1000000');
   });
 
-  it('stays quiet without FMath or off fomo’s chains', () => {
-    expect(tokenPlug(token, null)).toBeNull();
-    expect(tokenPlug({ ...token, chain: 'arbitrum' }, ORIGIN)).toBeNull();
+  it('links only fomo without FMath, and stays quiet without the referral or off fomo’s chains', () => {
+    expect(tokenPlug(token, { referral: REF, fmath: null })!.calc).toBeNull();
+    expect(tokenPlug(token, { referral: null, fmath: ORIGIN })).toBeNull();
+    expect(tokenPlug({ ...token, chain: 'arbitrum' }, LINKS)).toBeNull();
   });
 });
 
 describe('traderPlug', () => {
-  it('answers selling early with an exit plan', () => {
-    expect(traderPlug(token, position({ missedUsd: 500, pnl: 50 }), ORIGIN)!.cta).toBe('Plan the exits');
+  const plug = (p: Partial<PositionCalc>) => traderPlug(token, position(p), LINKS)!;
+
+  it('answers selling early with cheaper exits', () => {
+    const it = plug({ missedUsd: 500, pnl: 50 });
+    expect(it.title).toBe('Sold $500.00 before the top.');
+    expect(it.calc!.cta).toBe('Plan the exits on FMath');
   });
 
-  it('answers a loss with break-even, at the wallet’s own size and entry', () => {
-    const plug = traderPlug(token, position({}), ORIGIN)!;
-    expect(plug.cta).toBe('Check break-even');
-    expect(plug.body).toContain('$100');
-    const q = new URL(plug.href).searchParams;
+  it('blames a tiny loss on fees', () => {
+    expect(plug({ pnl: -0.5, usdIn: 50 }).title).toBe('Fees ate this one.');
+  });
+
+  it('answers a loss with the comeback, at the wallet’s own size and entry', () => {
+    const it = plug({});
+    expect(it.title).toBe('Down $100.00. Don’t pay full fees on the comeback.');
+    expect(it.href).toBe(REF);
+    const q = new URL(it.calc!.href).searchParams;
     expect(q.get('buy')).toBe('200');
     // $400 for 1M tokens is $0.0004 each, times the 1B supply
     expect(q.get('entryMcap')).toBe('400000');
   });
 
-  it('blames a tiny loss on fees, not on the call', () => {
-    const plug = traderPlug(token, position({ pnl: -0.5, usdIn: 50 }), ORIGIN)!;
-    expect(plug.title).toBe('Fees ate this one.');
-    expect(plug.body).toContain('$25.00 buy');
+  it('answers an open bag with cheaper profit-taking', () => {
+    expect(plug({ pnl: 300, open: 500_000, openValue: 500, sells: 0 }).calc!.cta).toBe('Set a target on FMath');
   });
 
-  it('answers an open winning bag with a target', () => {
-    const plug = traderPlug(token, position({ pnl: 300, open: 500_000, openValue: 500, sells: 0 }), ORIGIN)!;
-    expect(plug.cta).toBe('Set a target');
-  });
-
-  it('answers a closed win with the next entry', () => {
-    expect(traderPlug(token, position({ pnl: 200 }), ORIGIN)!.cta).toBe('Open FMath');
+  it('answers a closed win with the next one', () => {
+    expect(plug({ pnl: 200 }).title).toBe('Up $200.00. Keep more of the next one.');
   });
 });

@@ -26,8 +26,8 @@ import { TokenImage } from './TokenImage';
 import { TradeList } from './TradeList';
 import { ChartStylePicker } from './ChartStylePicker';
 import { Trail } from './Trail';
-import { FmathPlug } from './FmathPlug';
-import { traderPlug } from '../lib/fmath';
+import { ReferralPlug } from './ReferralPlug';
+import { traderPlug } from '../lib/referral';
 
 const PLAY_MS = 4_200;
 
@@ -172,8 +172,8 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
               <Loader2 className="size-3.5 animate-spin" aria-hidden /> Printing the receipt… skip
             </button>
           )}
-          {/* the lesson the receipt just taught, and where to work it out before the next trade */}
-          {done && plug && <FmathPlug plug={plug} className="rise mt-3" />}
+          {/* the lesson the receipt just taught, and what the next trade costs on fomo with the referral */}
+          {done && plug && <ReferralPlug plug={plug} className="rise mt-3" />}
         </aside>
 
         <div className="min-w-0 lg:col-start-1 lg:row-start-2">

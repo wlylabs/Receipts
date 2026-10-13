@@ -70,7 +70,8 @@ Every variable is optional; see [`.env.example`](.env.example).
 | `BSC_EXPLORER_API` | Any other Etherscan-compatible endpoint for BNB Chain. |
 | `GECKOTERMINAL_API`, `PYTH_BENCHMARKS_URL` | Use a different endpoint for those sources. |
 | `NEXT_PUBLIC_SITE_URL` | Public URL for share links and the sitemap. |
-| `NEXT_PUBLIC_FMATH_URL` | FMath's URL (e.g. `fmath.vercel.app`). Shows an FMath card on token pages and under each receipt on fomo's chains, opening its profit calculator with the token, buy size and entry market cap filled in. The pitch follows the run: an exit plan after selling early, break-even after a loss, a target for an open bag. Unset, no card. Read at build time. |
+| `NEXT_PUBLIC_FOMO_REFERRAL_URL` | The fomo referral link (default FMath's, `fomo.family/r/willydetrade`, 10% off fees). On token pages and under each receipt on fomo's chains, a card pitches it in the terms of what the page just showed: cheaper exits after selling before the top, "fees ate this one" after a small loss, a cheaper comeback after a big one, cheaper profit-taking on an open bag. `off` hides the card. |
+| `NEXT_PUBLIC_FMATH_URL` | FMath's URL (e.g. `fmath.vercel.app`). Adds a second link on that card to FMath's profit calculator with the token, the wallet's average buy and its entry market cap filled in. |
 
 ## Layout
 

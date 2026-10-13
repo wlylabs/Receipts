@@ -25,8 +25,8 @@ import { ReplayChart } from './ReplayChart';
 import { VideoExport, VideoSheet } from './VideoExport';
 import { ChartStylePicker } from './ChartStylePicker';
 import { Trail } from './Trail';
-import { FmathPlug } from './FmathPlug';
-import { tokenPlug } from '../lib/fmath';
+import { ReferralPlug } from './ReferralPlug';
+import { tokenPlug } from '../lib/referral';
 
 /** Wallets shown on each side of the board. */
 const SIDE = 3;
@@ -149,7 +149,7 @@ function TokenPage({ r }: { r: TokenReceipts }) {
               </div>
             </div>
           )}
-          {plug && <FmathPlug plug={plug} className="m-3" />}
+          {plug && <ReferralPlug plug={plug} className="m-3" />}
         </aside>
       </div>
 
