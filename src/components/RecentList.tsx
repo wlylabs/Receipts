@@ -13,12 +13,13 @@ const ICONS = { token: LineChart, wallet: Wallet, trader: History };
 const KINDS = { token: 'Token', wallet: 'Wallet', trader: 'Replay' };
 
 /** What this browser looked up last, newest first. */
-export function RecentList({ limit, compact = false, onPick }: { limit?: number; compact?: boolean; onPick?: () => void }) {
+export function RecentList({ limit, compact = false, onPick, hideEmpty = false }: { limit?: number; compact?: boolean; onPick?: () => void; hideEmpty?: boolean }) {
   const [recent] = useStored<Recent[]>(KEYS.recent, []);
   const list = limit ? recent.slice(0, limit) : recent;
 
   if (!list.length) {
-    return <p className={cx('text-muted', compact ? 'px-3 text-[12.5px]' : 'text-[13.5px]')}>Nothing yet. Tokens and wallets you open show up here.</p>;
+    if (hideEmpty) return null;
+    return <p className={cx('text-muted', compact ? 'px-3 text-[12.5px]' : 'text-[13.5px]')}>Nothing yet.</p>;
   }
   return (
     <ul className={cx(compact ? 'space-y-0.5' : 'divide-y divide-line overflow-hidden rounded-[14px] border border-line')}>

@@ -1,12 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clapperboard, Download, Loader2, Play, Volume2, VolumeX } from 'lucide-react';
-import { drawFrame, FORMATS, LENGTHS, soundCues, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
+import { drawFrame, FORMATS, LENGTHS, soundCues, timingOf, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
 import { saveFile } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import { Sheet } from './Sheet';
+import { useChartStyle } from '../hooks/useChartStyle';
+import { ChartStylePicker } from './ChartStylePicker';
 
 /** A button that opens the video maker: pick a size and a length, watch it, download it. */
 export function VideoExport({ video, fileBase, className, title }: { video: ReplayVideo; fileBase: string; className?: string; title?: string }) {
@@ -31,7 +33,10 @@ export function VideoSheet({ video, fileBase, open, onClose, title = 'Make a vid
   );
 }
 
-function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
+function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string }) {
+  // the video draws its candles the way the page's charts do
+  const [style] = useChartStyle();
+  const video = useMemo(() => ({ ...run, candleStyle: style }), [run, style]);
   const [format, setFormat] = useState<VideoFormat>('square');
   const [length, setLength] = useState<VideoLength>('short');
   const [sound, setSound] = useState(true);
@@ -40,7 +45,7 @@ function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const audio = useRef<AudioContext | null>(null);
   const { width, height } = FORMATS[format];
-  const { seconds } = LENGTHS[length];
+  const { seconds, play } = timingOf(length, video);
 
   // the preview loops the real frames, drawn small
   useEffect(() => {
@@ -52,14 +57,14 @@ function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
     const start = performance.now();
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const tick = (now: number) => {
-      const t = reduced ? LENGTHS[length].play + 1.5 : ((now - start) / 1000) % seconds;
+      const t = reduced ? play + 1.5 : ((now - start) / 1000) % seconds;
       g.setTransform(scale, 0, 0, scale, 0, 0);
       drawFrame(g, t, video, format, length);
       if (!reduced) frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [video, format, length, width, seconds, restart]);
+  }, [video, format, length, width, seconds, play, restart]);
 
   useEffect(() => () => void audio.current?.close().catch(() => undefined), []);
 
@@ -87,7 +92,7 @@ function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
     try {
       const { renderReplayVideo } = await import('../lib/replayVideo');
       const out = await renderReplayVideo(video, format, length, { sound }, setProgress);
-      const name = `${fileBase}-${FORMATS[format].ratio.replace(':', 'x')}-${seconds}s.${out.extension}`;
+      const name = `${fileBase}-${FORMATS[format].ratio.replace(':', 'x')}-${Math.round(seconds)}s.${out.extension}`;
       const res = await saveFile(new File([out.blob], name, { type: out.blob.type }));
       if (out.extension !== 'mp4') toast('Saved as WebM: X and Instagram need MP4. Chrome or Safari make MP4.');
       else if (sound && !out.sound) toast('Saved without sound: this browser can’t encode audio.');
@@ -127,6 +132,9 @@ function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
         })}
       </div>
 
+      <p className="eyebrow mt-3">Candles</p>
+      <ChartStylePicker inline className="mt-1.5" />
+
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">
           <p className="eyebrow">Length</p>
@@ -141,7 +149,7 @@ function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
                 onClick={() => setLength(l)}
                 className={cx('h-9 flex-1 rounded-md px-2 text-[12.5px] font-medium', l === length ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
               >
-                {LENGTHS[l].label} <span className="text-muted">· {LENGTHS[l].hint}</span>
+                {LENGTHS[l].label} <span className="text-muted">· {Math.round(timingOf(l, video).seconds)} s{LENGTHS[l].note}</span>
               </button>
             ))}
           </div>
@@ -157,7 +165,7 @@ function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
       </div>
       <div className="mt-2 flex items-center justify-between gap-3">
         <p className="text-[12.5px] text-muted">
-          {seconds} s · {FORMATS[format].width}×{FORMATS[format].height} · Made on your device.
+          {Math.round(seconds)} s · {FORMATS[format].width}×{FORMATS[format].height}
         </p>
         {sound && (
           <button type="button" onClick={listen} disabled={busy} className="btn btn-quiet h-8 min-h-0 shrink-0 px-2.5 text-[12.5px]">
@@ -168,7 +176,7 @@ function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
 
       <button type="button" onClick={make} disabled={busy} className="btn btn-primary mt-4 h-11 w-full">
         {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
-        {busy ? `Rendering ${Math.round(progress * 100)}%` : `Download ${FORMATS[format].ratio} · ${seconds} s`}
+        {busy ? `Rendering ${Math.round(progress * 100)}%` : `Download ${FORMATS[format].ratio} · ${Math.round(seconds)} s`}
       </button>
       {busy && (
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-subtle" aria-hidden>

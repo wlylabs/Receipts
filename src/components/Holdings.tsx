@@ -41,7 +41,7 @@ export function Holdings({ address }: { address: string }) {
       <h1 className="num truncate text-[22px] font-semibold tracking-tight" title={address}>
         {short(address)}
       </h1>
-      <p className="mt-1 text-[14px] text-muted">Pick a token to replay this wallet’s trades on it.</p>
+      <p className="mt-1 text-[14px] text-muted">Pick a token to replay.</p>
 
       <form onSubmit={submit} className="mt-5" noValidate>
         <label htmlFor="ca" className="eyebrow">
@@ -91,7 +91,7 @@ export function Holdings({ address }: { address: string }) {
         {state.status === 'error' && <Failure error={state.error} onRetry={reload} />}
         {state.status === 'ready' &&
           (state.data.holdings.length === 0 ? (
-            <p className="px-4 py-6 text-[13px] leading-relaxed text-muted">No DEX-traded tokens in this wallet right now. If it sold out, paste the token’s CA above.</p>
+            <p className="px-4 py-6 text-[13px] leading-relaxed text-muted">Nothing held right now. Sold out? Paste the token’s CA above.</p>
           ) : (
             <ul className="divide-y divide-line">
               {state.data.holdings.map((h) => (

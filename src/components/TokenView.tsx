@@ -23,6 +23,7 @@ import { Failure, Loading } from './States';
 import { TokenImage } from './TokenImage';
 import { ReplayChart } from './ReplayChart';
 import { VideoExport, VideoSheet } from './VideoExport';
+import { ChartStylePicker } from './ChartStylePicker';
 
 /** Wallets shown on each side of the board. */
 const SIDE = 3;
@@ -56,13 +57,13 @@ function TokenPage({ r }: { r: TokenReceipts }) {
   const losers = r.board.filter((w) => w.pnl < 0).reverse().slice(0, SIDE);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
+    <div className="reveal mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
       {/* the ticker */}
       <header className="flex items-center gap-3">
         <TokenImage src={token.image} symbol={token.symbol} className="size-10 text-base" />
         <div className="min-w-0 flex-1">
           <h1 className="flex items-baseline gap-2 truncate">
-            <span className="text-[18px] font-semibold tracking-tight">{token.symbol}</span>
+            <span className="display text-[24px]">{token.symbol}</span>
             <span className="truncate text-[13px] text-muted">{token.name}</span>
           </h1>
           <p className="truncate text-[12.5px] text-muted">
@@ -70,7 +71,7 @@ function TokenPage({ r }: { r: TokenReceipts }) {
           </p>
         </div>
         <div className="text-right">
-          <p className="num text-[18px] font-semibold tracking-tight">{supply ? `MC ${mcap(token.mcapUsd)}` : price(token.priceUsd)}</p>
+          <p className="num display text-[24px]">{supply ? `MC ${mcap(token.mcapUsd)}` : price(token.priceUsd)}</p>
           {token.change24h !== null && <p className={cx('num text-[12.5px] font-medium', token.change24h >= 0 ? 'text-pos' : 'text-neg')}>{pct(token.change24h / 100, { signed: true })} 24h</p>}
         </div>
       </header>
@@ -82,7 +83,6 @@ function TokenPage({ r }: { r: TokenReceipts }) {
             {market.tone === 'pos' ? <TrendingUp className="size-4.5" /> : market.tone === 'neg' ? <TrendingDown className="size-4.5" /> : <Activity className="size-4.5" />}
           </span>
           <div className="min-w-0 flex-1">
-            <p className="eyebrow">Market now</p>
             <p className={cx('text-[15px] font-semibold leading-tight', market.tone === 'pos' && 'text-pos', market.tone === 'neg' && 'text-neg')}>{market.label}</p>
             <p className="truncate text-[12.5px] text-muted">{market.line}</p>
           </div>
@@ -115,12 +115,15 @@ function TokenPage({ r }: { r: TokenReceipts }) {
       {/* the token's whole history, every candle */}
       <section className="panel mt-4 p-3 sm:p-4" aria-labelledby="chart-title">
         <div className="mb-2 flex items-center justify-between gap-3 px-1">
-          <h2 id="chart-title" className="text-[13px] font-semibold">
-            All candles
+          <h2 id="chart-title" className="eyebrow">
+            Since launch
           </h2>
-          <p className="num text-[11.5px] text-muted">
-            {chart.candles.length} × {r.candle}
-          </p>
+          <div className="flex items-center gap-1">
+            <p className="num text-[11.5px] text-muted">
+              {chart.candles.length} × {r.candle}
+            </p>
+            <ChartStylePicker className="-my-1.5" />
+          </div>
         </div>
         <ReplayChart className="md:aspect-[3/1] lg:aspect-[4/1]" candles={chart.candles} step={chart.step} scale={supply || 1} label={supply ? mcap : price} tone={token.change24h === null ? null : token.change24h >= 0 ? 'pos' : 'neg'} />
         <div className="num mt-1 flex justify-between pr-14 text-[11px] text-muted sm:pr-16">
@@ -136,11 +139,11 @@ function TokenPage({ r }: { r: TokenReceipts }) {
       </section>
 
       <section className="mt-6" aria-labelledby="board-title">
-        <h2 id="board-title" className="text-[14px] font-semibold">
-          Top 3 traders
+        <h2 id="board-title" className="text-[15px] font-semibold tracking-tight">
+          Top traders
         </h2>
         <p className="mt-0.5 text-[12.5px] text-muted">
-          {`${r.board.length} wallets in the latest ${r.window.trades} trades (${span(r.window.to - r.window.from)}). Copy the addresses, or make a video of any of them right here.`}
+          {`${r.board.length} wallets · last ${span(r.window.to - r.window.from)}`}
         </p>
         {r.board.length === 0 ? (
           <p className="panel mt-2 px-4 py-6 text-[13px] text-muted">No recent trades in the feed.</p>
@@ -170,8 +173,7 @@ const copy = async (text: string, what: string) => toast((await copyText(text)) 
 function Side({ title, tone, rows, empty, token }: { title: string; tone: 'pos' | 'neg'; rows: BoardRow[]; empty: string; token: TokenInfo }) {
   return (
     <div className="panel min-w-0 overflow-hidden">
-      <div className={cx('h-1', tone === 'pos' ? 'bg-pos' : 'bg-neg')} aria-hidden />
-      <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+      <div className="flex items-center gap-2 px-3 pt-3 pb-1.5">
         <h3 className={cx('flex flex-1 items-center gap-1.5 text-[12px] font-semibold tracking-wide uppercase', tone === 'pos' ? 'text-pos' : 'text-neg')}>
           {tone === 'pos' ? <TrendingUp className="size-3.5" aria-hidden /> : <TrendingDown className="size-3.5" aria-hidden />}
           {title}

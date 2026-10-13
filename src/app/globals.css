@@ -5,47 +5,54 @@
 @import '@fontsource/jetbrains-mono/latin-700.css';
 
 /*
- * Paper-trade light: white page, hairline borders, one ink colour for actions, and green and
- * red only where money moves. The receipt is the one object with texture.
+ * Cinematic, minimal: a near-black stage at night and a bright paper one by day, a soft spotlight
+ * from the top, hairline edges, one ink colour for actions, and green and red only where money
+ * moves. Motion is slow-in, soft-out, with a little blur, like a title card coming into focus.
  */
 :root {
-  --bg: #ffffff;
+  --bg: #fbfbfc;
   --surface: #ffffff;
-  --subtle: #f7f7f8;
-  --hover: #f1f1f3;
-  --line: #ebebee;
-  --line-strong: #d9d9de;
-  --ink: #111113;
-  --ink-2: #3f3f46;
-  --muted: #71717a;
-  --faint: #a1a1aa;
-  --pos: #16a34a;
-  --pos-wash: #ecfdf3;
-  --neg: #dc2626;
-  --neg-wash: #fef2f2;
+  --subtle: #f4f4f6;
+  --hover: #eeeef1;
+  --line: #e7e7eb;
+  --line-strong: #d4d4da;
+  --ink: #0c0c0e;
+  --ink-2: #3a3a41;
+  --muted: #6e6e78;
+  --faint: #a3a3ad;
+  --pos: #12a150;
+  --pos-wash: #e9f9f0;
+  --neg: #e5322d;
+  --neg-wash: #fdeeee;
   --on-ink: #ffffff;
   --ring: #2563eb;
+  --glow: rgba(12, 12, 14, 0.06);
+  --shadow: 0 1px 2px rgba(12, 12, 14, 0.04), 0 8px 24px -12px rgba(12, 12, 14, 0.08);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0b0b0c;
-    --surface: #111113;
-    --subtle: #161618;
-    --hover: #1c1c1f;
-    --line: #232326;
-    --line-strong: #2e2e33;
-    --ink: #f4f4f5;
-    --ink-2: #d4d4d8;
-    --muted: #a1a1aa;
-    --faint: #71717a;
-    --pos: #22c55e;
-    --pos-wash: #0c1f14;
-    --neg: #f04444;
-    --neg-wash: #241011;
-    --on-ink: #0b0b0c;
+    --bg: #060607;
+    --surface: #0e0e10;
+    --subtle: #141417;
+    --hover: #1a1a1e;
+    --line: #1f1f23;
+    --line-strong: #2b2b31;
+    --ink: #f5f5f6;
+    --ink-2: #cfcfd5;
+    --muted: #8e8e98;
+    --faint: #5f5f69;
+    --pos: #2bd576;
+    --pos-wash: #0b1f14;
+    --neg: #ff4d4a;
+    --neg-wash: #250e0e;
+    --on-ink: #060607;
     --ring: #60a5fa;
+    --glow: rgba(255, 255, 255, 0.07);
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px -16px rgba(0, 0, 0, 0.8);
+    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     color-scheme: dark;
   }
 }
@@ -76,7 +83,10 @@ html {
 }
 
 body {
-  background: var(--bg);
+  /* the spotlight: a soft pool of light from the top of the stage */
+  background:
+    radial-gradient(1200px 520px at 50% -180px, var(--glow), transparent 70%) no-repeat,
+    var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
   font-feature-settings: 'cv11', 'ss01';
@@ -96,10 +106,44 @@ body {
   font-feature-settings: 'tnum', 'cv11';
 }
 
+/* components sit under Tailwind's utilities, so a utility on the element always wins */
+@layer components {
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 18px;
+  box-shadow: var(--shadow), var(--edge);
+}
+
+/* a display line: tight, heavy, a little light falling off it */
+.display {
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 1.02;
+}
+.fade-text {
+  background: linear-gradient(180deg, var(--ink) 30%, color-mix(in srgb, var(--ink) 45%, transparent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* a title card coming into focus; --d staggers the pieces */
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+.reveal {
+  animation: reveal 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: var(--d, 0ms);
 }
 
 .btn {
@@ -109,9 +153,10 @@ body {
   gap: 0.45rem;
   min-height: 2.5rem;
   padding: 0 0.95rem;
-  border-radius: 10px;
+  border-radius: 999px;
   font-size: 14px;
   font-weight: 550;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   transition:
     background-color 120ms ease,
@@ -133,7 +178,10 @@ body {
   color: var(--on-ink);
 }
 .btn-primary:hover:not(:disabled) {
-  opacity: 0.88;
+  opacity: 0.86;
+}
+.btn-primary {
+  box-shadow: 0 6px 20px -8px color-mix(in srgb, var(--ink) 45%, transparent);
 }
 .btn-quiet {
   background: var(--surface);
@@ -153,8 +201,10 @@ body {
 }
 
 .eyebrow {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--muted);
 }
 
@@ -164,7 +214,7 @@ body {
   gap: 0.25rem;
   border: 1px solid var(--line);
   background: var(--subtle);
-  border-radius: 10px;
+  border-radius: 12px;
   transition:
     border-color 120ms ease,
     background-color 120ms ease;
@@ -176,6 +226,7 @@ body {
 /* the field's dark border already marks focus; the ring inside it is a second, clashing one */
 .field input:focus-visible {
   outline: none;
+}
 }
 
 @keyframes pop-in {
@@ -207,18 +258,8 @@ body {
   animation: shimmer 1.3s linear infinite;
 }
 
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
 .rise {
-  animation: rise 200ms ease-out both;
+  animation: reveal 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 @keyframes sheet-up {

@@ -4,7 +4,7 @@ import { RANKS, toneOf } from './game';
 import { position, priceAt, rankOf, supplyOf } from './receipts';
 import { bucket, mergeMarkers, type Candle } from './candles';
 import type { Trade, TraderReceipts } from './types';
-import { dateTime, day, mcap, price, short, usd } from './format';
+import { compact, dateTime, day, mcap, price, short, span, usd } from './format';
 import { timeOf, type Caption, type Pop, type ReplayVideo } from './replayVideo';
 
 /** Most candles drawn at once in a replay. */
@@ -37,7 +37,7 @@ export interface TraderStory {
 export function traderStory(r: TraderReceipts): TraderStory {
   const p = r.position;
   const { token, series } = r;
-  const trades: Trade[] = r.trades.map(([ts, side, tokens, u, pr, tx]) => ({ ts, side, tokens, usd: u, priceUsd: pr, tx, trader: r.owner }));
+  const trades: Trade[] = r.trades.map(([ts, side, tokens, u, pr, tx, kind, priced, feeUsd]) => ({ ts, side, tokens, usd: u, priceUsd: pr, tx, trader: r.owner, kind, priced, feeUsd }));
 
   // the replay runs from the wallet's first trade to now, over the token's whole history
   const from = Math.max(series[0]?.[0] ?? 0, (trades[0]?.ts ?? 0) - 60);
@@ -50,8 +50,11 @@ export function traderStory(r: TraderReceipts): TraderStory {
   const label = supply ? mcap : price;
   const at = (pr: number) => (supply ? `${mcap(pr * supply)} MC` : price(pr));
   const rank = RANKS[rankOf(p.roi)];
-  const firstBuy = trades.find((t) => t.side === 'buy');
-  const lastSell = trades.filter((t) => t.side === 'sell').at(-1);
+  const swaps = trades.filter((t) => t.kind !== 'transfer');
+  const firstBuy = swaps.find((t) => t.side === 'buy');
+  const lastSell = swaps.filter((t) => t.side === 'sell').at(-1);
+  // how long the bag was held: first buy to the last sell, or to now while some is still held
+  const heldUntil = p.open > 0 || !lastSell ? Math.max(to, Date.now() / 1000) : lastSell.ts;
   const stats: Stat[] = [
     { k: 'Put in', v: usd(p.usdIn) },
     { k: 'Took out', v: usd(p.usdOut) },
@@ -61,13 +64,17 @@ export function traderStory(r: TraderReceipts): TraderStory {
     { k: 'Trades', v: `${p.buys} buys · ${p.sells} sells` },
     { k: 'Realized', v: usd(p.realized, { signed: true }), tone: toneOf(p.realized) },
     { k: 'Unrealized', v: usd(p.unrealized, { signed: true }), tone: toneOf(p.unrealized) },
+    ...(firstBuy && heldUntil > firstBuy.ts ? [{ k: 'Held', v: span(heldUntil - firstBuy.ts) }] : []),
+    ...(p.feesUsd > 0.005 ? [{ k: 'Fees paid', v: `-${usd(p.feesUsd)}`, tone: 'neg' as const }] : []),
+    ...(p.received > 0 || p.sent > 0 ? [{ k: 'Transfers', v: `${compact(p.received)} in · ${compact(p.sent)} out` }] : []),
+    ...(p.unknownSold > 0 ? [{ k: 'Sold, buy not seen', v: `${compact(p.unknownSold)} ${token.symbol}` }] : []),
     ...(p.missedUsd > 0.005 ? [{ k: 'Sold before top', v: `-${usd(p.missedUsd)}`, tone: 'neg' as const }] : []),
     ...(r.of > 1 ? [{ k: 'vs traders', v: `#${r.place} of ${r.of}` }] : []),
   ];
 
   // one marker per candle, so trades close together do not pile up
   const markers = mergeMarkers(
-    trades.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side })),
+    swaps.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side })),
     chart.candles,
     chart.step,
   );
@@ -181,4 +188,14 @@ function beats(trades: readonly Trade[], v: ReplayVideo, at: (price: number) => 
     if (kept.every((k) => Math.abs(when(k) - when(c)) >= BEAT_GAP)) kept.push(c);
   }
   return kept.sort((a, b) => a.ts - b.ts);
+}
+
+const csvCell = (v: string | number) => (typeof v === 'number' ? String(v) : /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+/** The wallet's trades as a CSV file's text, for a spreadsheet or a tax tool. */
+export function tradesCsv(r: TraderReceipts): string {
+  const rows: (string | number)[][] = [['time_utc', 'side', 'kind', 'tokens', 'usd', 'price_usd', 'priced_from', 'fee_usd', 'tx', 'chain', 'token', 'token_address', 'wallet']];
+  for (const [ts, side, tokens, u, pr, tx, kind, priced, fee] of r.trades)
+    rows.push([new Date(ts * 1000).toISOString(), side, kind ?? 'swap', tokens, +u.toFixed(6), pr, priced === 'candle' ? 'chart' : 'trade', +(fee ?? 0).toFixed(6), tx, r.token.chain, r.token.symbol, r.token.address, r.owner]);
+  return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n';
 }

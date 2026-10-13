@@ -44,7 +44,7 @@ export function AppNav() {
   return (
     <>
       {/* sidebar, wide screens */}
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-line bg-subtle lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-line bg-bg/60 backdrop-blur-xl lg:flex">
         <div className="flex h-14 items-center px-5">
           <Brand />
         </div>
@@ -64,17 +64,14 @@ export function AppNav() {
             </Link>
           ))}
         </nav>
-        <div className="mt-6 min-h-0 flex-1 overflow-y-auto pb-4">
-          <p className="eyebrow px-6 pb-1.5">Recently opened</p>
-          <div className="px-3">
-            <RecentList limit={6} compact />
-          </div>
+        {/* the latest few, right under the nav: one click back */}
+        <div className="mt-4 min-h-0 flex-1 overflow-y-auto border-t border-line/60 px-3 pb-4 pt-4">
+          <RecentList limit={6} compact hideEmpty />
         </div>
-        <p className="border-t border-line px-6 py-4 text-[12px] leading-relaxed text-muted">Paper money only. Not financial advice.</p>
       </aside>
 
       {/* top bar */}
-      <header className="sticky top-0 z-30 border-b border-line bg-bg/80 pt-[env(safe-area-inset-top)] backdrop-blur-lg">
+      <header className="sticky top-0 z-30 border-b border-line/60 bg-bg/70 pt-[env(safe-area-inset-top)] backdrop-blur-xl backdrop-saturate-150">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-3 px-4 sm:px-6">
           <div className="lg:hidden">
             <Brand />
@@ -105,7 +102,7 @@ export function AppNav() {
       {/* tab bar, phones */}
       <nav
         aria-label="Tabs"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg sm:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-line/60 bg-bg/75 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl backdrop-saturate-150 sm:hidden"
       >
         <div className="grid h-16 grid-cols-3">
           <Tab item={HOME} active={active(HOME.href)} />
@@ -120,7 +117,7 @@ export function AppNav() {
       <Sheet open={searching} onClose={close} title="Search">
         {/* no autofocus: on a phone it would throw the keyboard up over the sheet */}
         <Omnibox size="sm" onGo={close} />
-        <p className="eyebrow mb-1.5 mt-5">Recently opened</p>
+        <p className="eyebrow mb-1.5 mt-5">Recent</p>
         <div className="-mx-3">
           <RecentList limit={5} compact onPick={close} />
         </div>
@@ -147,7 +144,7 @@ function SearchButton({ onClick }: { onClick: () => void }) {
     >
       <span className="flex items-center gap-2">
         <Search className="size-4" aria-hidden />
-        Token CA or wallet…
+        Search
       </span>
       <kbd className="rounded border border-line bg-surface px-1.5 font-sans text-[11px] text-muted">/</kbd>
     </button>

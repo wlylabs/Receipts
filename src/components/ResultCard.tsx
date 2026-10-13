@@ -31,7 +31,7 @@ export function ResultCard({
     <div className="rise">
       <p className="eyebrow">{kicker}</p>
       <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <p className={cx('num text-[34px] font-semibold leading-none tracking-[-0.03em] sm:text-[40px]', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{pnl}</p>
+        <p className={cx('num display text-[44px] sm:text-[56px]', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{pnl}</p>
         {roi && <span className={cx('num rounded-md px-2 py-0.5 text-[13px] font-semibold', tone === 'pos' ? 'bg-pos-wash text-pos' : tone === 'neg' ? 'bg-neg-wash text-neg' : 'bg-subtle text-muted')}>{roi}</span>}
       </div>
       <div className="mt-3 flex items-center gap-2.5 rounded-xl bg-subtle px-3 py-2.5">

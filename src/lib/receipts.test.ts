@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { cleanAddress, isAddress, movesToTrades, priceAt, leaderboard, peakAfter, placement, position, rankOf, sameAddress, simulate, toSeries, toTrades } from './receipts';
-import type { GtTrade, Trade } from './types';
+import { bestPair, cleanAddress, isAddress, movesToTrades, priceAt, leaderboard, peakAfter, placement, position, rankOf, sameAddress, simulate, toSeries, toTrades } from './receipts';
+import type { DsPair, GtTrade, Trade } from './types';
 
 const SOL = '2eZJN9uAvrsYjcx45xph2dZAyAsX6oLDpgVzsNNSKxQr';
 const EVM = '0x4200000000000000000000000000000000000006';
@@ -123,10 +123,82 @@ describe('priceAt', () => {
     expect(priceAt(s, 99_999, 9)).toBe(9);
   });
   it('turns balance changes into priced buys and sells', () => {
-    const t = movesToTrades([{ tx: 'a', ts: 210, delta: 10 }, { tx: 'b', ts: 310, delta: -4 }], SOL, s, 9);
-    expect(t.map((x) => [x.side, x.tokens, x.usd])).toEqual([
-      ['buy', 10, 20],
-      ['sell', 4, 12],
+    const t = movesToTrades([{ tx: 'a', ts: 210, delta: 10, kind: 'swap' }, { tx: 'b', ts: 310, delta: -4, kind: 'swap' }], SOL, s, 9);
+    expect(t.map((x) => [x.side, x.tokens, x.usd, x.priced])).toEqual([
+      ['buy', 10, 20, 'candle'],
+      ['sell', 4, 12, 'candle'],
     ]);
+  });
+  it('values a swap at what was really paid: stablecoins, the native coin at its price then, or the feed', () => {
+    const nativeAt = (ts: number) => (ts < 300 ? 100 : 200);
+    const feed = new Map([['c', 30]]);
+    const t = movesToTrades(
+      [
+        { tx: 'a', ts: 210, delta: 10, kind: 'swap', native: -0.25, stable: 0, fee: 0.001 },
+        { tx: 'b', ts: 310, delta: -4, kind: 'swap', native: 0, stable: 14 },
+        { tx: 'c', ts: 320, delta: -5, kind: 'swap' },
+      ],
+      SOL,
+      s,
+      9,
+      { nativeAt, feed },
+    );
+    expect(t.map((x) => [x.usd, x.priced])).toEqual([
+      [25, 'exact'],
+      [14, 'exact'],
+      [30, 'exact'],
+    ]);
+    expect(t[0]!.feeUsd).toBeCloseTo(0.1);
+  });
+  it('keeps the chart when the exact value is far off it, and values a transfer at the chart', () => {
+    const t = movesToTrades(
+      [
+        { tx: 'a', ts: 210, delta: 10, kind: 'swap', native: 0, stable: 5000 },
+        { tx: 'b', ts: 210, delta: 10, kind: 'transfer', native: 0, stable: 0 },
+      ],
+      SOL,
+      s,
+      9,
+    );
+    expect(t.map((x) => [x.usd, x.priced, x.kind])).toEqual([
+      [20, 'candle', 'swap'],
+      [20, 'candle', 'transfer'],
+    ]);
+  });
+});
+
+describe('position with transfers and fees', () => {
+  const x = (side: 'buy' | 'sell', tokens: number, usd: number, ts: number, kind: 'swap' | 'transfer' = 'swap', feeUsd = 0): Trade => ({ ...tr(side, tokens, usd, ts), kind, feeUsd });
+  it('sends tokens away at cost, with no profit or loss', () => {
+    const p = position([x('buy', 100, 100, 1), x('sell', 50, 50, 2, 'transfer')], 1);
+    expect(p.sells).toBe(0);
+    expect(p.sent).toBe(50);
+    expect(p.open).toBe(50);
+    expect(p.pnl).toBeCloseTo(0);
+    expect(p.unknownSold).toBe(0);
+  });
+  it('holds received tokens at what they were worth then', () => {
+    const p = position([x('buy', 100, 100, 1), x('buy', 100, 300, 2, 'transfer'), x('sell', 200, 600, 3)], 3);
+    expect(p.buys).toBe(1);
+    expect(p.received).toBe(100);
+    expect(p.realized).toBeCloseTo(200);
+    expect(p.usdIn).toBe(100);
+  });
+  it('takes fees off the P&L', () => {
+    const p = position([x('buy', 100, 100, 1, 'swap', 1), x('sell', 100, 150, 2, 'swap', 2)], 1);
+    expect(p.feesUsd).toBe(3);
+    expect(p.pnl).toBeCloseTo(47);
+  });
+});
+
+describe('bestPair', () => {
+  const pair = (id: string, priceUsd: string, liq: number) => ({ pairAddress: id, priceUsd, liquidity: { usd: liq } }) as DsPair;
+  it('takes the deepest pool whose price agrees with the rest, passing over one priced far off', () => {
+    const best = bestPair([pair('sol', '0.0000032', 346_000), pair('usdc', '0.0000032', 265_000), pair('ray', '0.01571', 5_800_000), pair('aven', '0.016', 3_400_000), pair('orca', '0.0000031', 138_000)]);
+    expect(best?.pairAddress).toBe('sol');
+  });
+  it('still answers with one pool or none', () => {
+    expect(bestPair([pair('a', '1', 5)])?.pairAddress).toBe('a');
+    expect(bestPair([])).toBeNull();
   });
 });

@@ -23,6 +23,8 @@ import { ReplayChart } from './ReplayChart';
 import { ResultCard } from './ResultCard';
 import { VideoExport } from './VideoExport';
 import { TokenImage } from './TokenImage';
+import { TradeList } from './TradeList';
+import { ChartStylePicker } from './ChartStylePicker';
 
 const PLAY_MS = 4_200;
 
@@ -64,7 +66,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
+    <div className="reveal mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
       <div className="mx-auto max-w-3xl">
         <header className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
@@ -98,7 +100,10 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
                 </span>
               </span>
             </Link>
-            <p className={cx('num text-[20px] font-semibold tracking-tight', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
+            <div className="flex items-center gap-1">
+              <p className={cx('num display text-[26px]', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
+              <ChartStylePicker />
+            </div>
           </div>
           <div className="relative mt-3">
             <ReplayChart candles={chart.candles} step={chart.step} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
@@ -133,12 +138,26 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
           </section>
         )}
 
-        <p className="mt-3 px-1 text-[12px] leading-relaxed text-faint">
-          {r.source === 'chain'
-            ? `From the chain: every ${token.symbol} transfer in or out of this wallet${r.complete ? '' : ' (latest ones only)'}, priced at the candle of its time. Tokens received as gifts count as buys.`
-            : `From ${token.symbol}’s latest ${r.window.trades} DEX trades (${span(r.window.to - r.window.from)}). Earlier trades by this wallet are not in that feed.`}
-        </p>
+        {done && <TradeList r={r} />}
+
+        <details className="group mt-3 px-1 text-[12px] leading-relaxed text-faint">
+          <summary className="cursor-pointer list-none select-none hover:text-muted">How it’s counted</summary>
+          <p className="mt-1.5">{sourceNote(r)}</p>
+        </details>
       </div>
     </div>
   );
+}
+
+/** Where the numbers come from and how far to trust them, in a line. */
+function sourceNote(r: TraderReceipts): string {
+  const { token } = r;
+  if (r.source === 'feed') return `From ${token.symbol}’s latest ${r.window.trades} DEX trades (${span(r.window.to - r.window.from)}). Earlier trades by this wallet are not in that feed.`;
+  const exact = r.trades.filter((t) => t[6] !== 'transfer' && t[7] !== 'candle').length;
+  const swaps = r.trades.filter((t) => t[6] !== 'transfer').length;
+  const parts = [`From the chain: every ${token.symbol} move in or out of this wallet${r.complete ? '' : ' (the latest ones only)'}.`];
+  parts.push(exact === swaps ? 'Each swap is valued at what was really paid or received.' : `${exact} of ${swaps} swaps are valued at what was really paid or received, the rest at the chart’s candle.`);
+  if (r.position.received || r.position.sent) parts.push('Tokens received for nothing are held at what they were worth then; tokens sent away leave at cost, with no profit.');
+  if (r.position.feesUsd) parts.push('Network fees are taken off the P&L.');
+  return parts.join(' ');
 }

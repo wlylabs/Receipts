@@ -1,22 +1,25 @@
 import { holdings as solanaHoldings } from '../../../../lib/solana';
-import { BLOCKSCOUT, holdings as evmHoldings } from '../../../../lib/blockscout';
+import { historyChains, holdings as evmHoldings } from '../../../../lib/evm';
 import { pairsFor } from '../../../../lib/upstream';
 import { CHAINS } from '../../../../lib/chains';
-import { isWallet, sameAddress, toTokenInfo } from '../../../../lib/receipts';
-import { fail, ok } from '../../../../lib/respond';
+import { bestPair, isWallet, sameAddress, toTokenInfo } from '../../../../lib/receipts';
+import { fail, ok, tooMany } from '../../../../lib/respond';
 import type { DsPair, Holding, WalletHoldings } from '../../../../lib/types';
 
-const MAX = 60;
+/** Most tokens priced per chain: enough for any real wallet, short of the ones full of airdropped spam. */
+const MAX = 300;
 
 /** The tokens a wallet holds that trade on a DEX, biggest first, to pick one to replay. */
-export async function GET(_req: Request, ctx: { params: Promise<{ address: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ address: string }> }) {
+  const limited = tooMany(req, 'wallet', 12);
+  if (limited) return limited;
   const { address } = await ctx.params;
   if (!isWallet(address)) return fail('invalid', 'That is not a wallet address.');
   try {
     const held: { chain: string; address: string; amount: number }[] = address.startsWith('0x')
       ? (
           await Promise.all(
-            Object.keys(BLOCKSCOUT).map((chain) =>
+            historyChains().map((chain) =>
               evmHoldings(chain, address)
                 .then((h) => h.map((x) => ({ chain, ...x })))
                 .catch(() => []),
@@ -27,12 +30,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ address: strin
 
     const out: Holding[] = [];
     for (const chain of new Set(held.map((h) => h.chain))) {
+      // every token is priced, then sorted by value: the order the chain lists them in means nothing
       const mine = held.filter((h) => h.chain === chain).slice(0, MAX);
       const pairs = await pairsFor(chain, mine.map((h) => h.address)).catch(() => [] as DsPair[]);
       for (const h of mine) {
-        const best = pairs
-          .filter((p) => CHAINS[p.chainId] && sameAddress(p.baseToken.address, h.address))
-          .reduce<DsPair | null>((a, p) => (!a || (p.liquidity?.usd ?? 0) > (a.liquidity?.usd ?? 0) ? p : a), null);
+        const best = bestPair(pairs.filter((p) => CHAINS[p.chainId] && sameAddress(p.baseToken.address, h.address)));
         if (!best) continue;
         const token = toTokenInfo(best);
         out.push({ token, amount: h.amount, valueUsd: h.amount * token.priceUsd });

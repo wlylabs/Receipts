@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import type { CSSProperties } from 'react';
 import { Omnibox } from '../components/Omnibox';
 import { TokenView } from '../components/TokenView';
 import { TraderView } from '../components/TraderView';
@@ -35,18 +36,21 @@ export default async function HomePage({ searchParams }: Props) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 sm:px-6">
-      <section className="mx-auto max-w-2xl pb-10 pt-12 text-center sm:pt-20" aria-labelledby="hero">
-        <h1 id="hero" className="text-[34px] font-semibold leading-[1.08] tracking-[-0.03em] sm:text-[52px]">
-          Replay any wallet.
+      <section className="mx-auto flex min-h-[calc(100dvh-9rem)] max-w-2xl flex-col justify-center pb-16 pt-10 text-center" aria-labelledby="hero">
+        <h1 id="hero" className="display reveal text-[44px] sm:text-[76px]">
+          <span className="fade-text">Every trade,</span>
           <br />
-          <span className="text-muted">Make the video.</span>
+          <span className="text-muted">replayed.</span>
         </h1>
-        <p className="mx-auto mt-4 max-w-lg text-[15px] leading-relaxed text-ink-2 sm:text-base">
-          Real charts, real wallets, pretend money. Solana, Ethereum, Base, BNB, Arbitrum, Polygon, Avalanche, Optimism and Robinhood Chain.
+        <p className="reveal mx-auto mt-5 max-w-md text-balance text-[15px] leading-relaxed text-muted sm:text-[17px]" style={{ '--d': '120ms' } as CSSProperties}>
+          Paste a token or a wallet. Watch it play out. Keep the video.
         </p>
-        <div id="paste" className="mt-8 scroll-mt-24 text-left">
+        <div id="paste" className="reveal mt-10 scroll-mt-24 text-left" style={{ '--d': '240ms' } as CSSProperties}>
           <Omnibox />
         </div>
+        <p className="reveal mx-auto mt-8 max-w-lg text-balance text-[10.5px] font-medium uppercase leading-relaxed tracking-[0.16em] text-faint" style={{ '--d': '360ms' } as CSSProperties}>
+          Solana · Ethereum · Base · BNB · Arbitrum · Polygon · Avalanche · Optimism · Robinhood
+        </p>
       </section>
     </div>
   );

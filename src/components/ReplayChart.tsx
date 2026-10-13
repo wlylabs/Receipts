@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { bucket, candleAt, logTicks, range, upTo, type Candle } from '../lib/candles';
 import { cx } from '../lib/cx';
+import { COLORS, shape } from '../lib/chartStyle';
+import { useChartStyle } from '../hooks/useChartStyle';
 
 export interface Marker {
   ts: number;
@@ -18,6 +20,8 @@ const PAD_TOP = 48;
 const PAD_BOTTOM = 44;
 /** Narrowest a candle may be on screen, in pixels: thinner ones blur into grey dots, so neighbours merge. */
 const MIN_PX = 3;
+/** Room an axis label needs, in screen pixels: its height and a little air. */
+const LABEL_PX = 20;
 
 /**
  * A token's candles on a log scale (memecoins move in multiples), the way DexScreener and
@@ -59,11 +63,16 @@ export function ReplayChart({
 }) {
   // the plot's width on screen, so candles never get thinner than MIN_PX
   const plot = useRef<HTMLDivElement>(null);
+  const [style] = useChartStyle();
   const [px, setPx] = useState(0);
+  const [tall, setTall] = useState(0);
   useEffect(() => {
     const el = plot.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setPx(Math.round(e!.contentRect.width)));
+    const ro = new ResizeObserver(([e]) => {
+      setPx(Math.round(e!.contentRect.width));
+      setTall(Math.round(e!.contentRect.height));
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -90,6 +99,9 @@ export function ReplayChart({
   const runTo = to ?? geo.t1;
   const playhead = head === undefined ? runTo : Math.min(runTo, Math.max(runFrom, head));
   const shown = upTo(candles, step, playhead);
+  // drawn in the picked shape; the price tag keeps the real last price
+  const drawn = shape(shown, style.kind);
+  const palette = COLORS[style.colors];
   const live = head !== undefined && head < runTo;
   const color = tone === 'pos' ? 'var(--pos)' : tone === 'neg' ? 'var(--neg)' : 'var(--ink)';
   const now = shown.at(-1)?.[4] ?? candles[0]![4];
@@ -97,8 +109,11 @@ export function ReplayChart({
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   const hx = geo.x(playhead);
   const hy = geo.y(now);
-  // axis labels make way for the price tags
-  const labels = geo.ticks.filter((p) => Math.abs(geo.y(p) - hy) > VH * 0.07);
+  // axis labels make way for the price tag, and for each other, by real pixels: a phone's chart is
+  // short, so a share of its height is less than a label is tall
+  const gap = (LABEL_PX / Math.max(1, tall || 200)) * VH;
+  const labels: number[] = [];
+  for (const p of geo.ticks) if (Math.abs(geo.y(p) - hy) > gap && labels.every((q) => Math.abs(geo.y(q) - geo.y(p)) > gap * 0.8)) labels.push(p);
 
   return (
     <div className={cx('relative flex aspect-[5/2] w-full select-none', className)}>
@@ -107,13 +122,13 @@ export function ReplayChart({
           {geo.ticks.map((p) => (
             <line key={p} x1="0" x2={VW} y1={geo.y(p)} y2={geo.y(p)} stroke="var(--line)" vectorEffect="non-scaling-stroke" />
           ))}
-          {shown.map(([ts, o, h, l, c]) => {
+          {drawn.map(([ts, o, h, l, c]) => {
             const up = c >= o;
             const cx0 = geo.x(ts + step / 2);
             const top = geo.y(Math.max(o, c));
             const bottom = geo.y(Math.min(o, c));
             return (
-              <g key={ts} stroke={up ? 'var(--pos)' : 'var(--neg)'} fill={up ? 'var(--pos)' : 'var(--neg)'}>
+              <g key={ts} stroke={up ? palette.up : palette.down} fill={up ? palette.up : palette.down}>
                 <line x1={cx0} x2={cx0} y1={geo.y(h)} y2={geo.y(l)} strokeWidth="1.25" vectorEffect="non-scaling-stroke" />
                 <rect x={cx0 - (slot * 0.7) / 2} y={top} width={Math.max(0.5, slot * 0.7)} height={Math.max(1.5, bottom - top)} stroke="none" />
               </g>

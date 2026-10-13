@@ -34,13 +34,15 @@ export function Failure({ error, onRetry }: { error: ApiError; onRetry: () => vo
           ? 'No trades to show'
           : error.code === 'invalid'
             ? 'Check the address'
-            : 'Couldn’t load that';
+            : error.code === 'busy'
+              ? 'Too many at once'
+              : 'Couldn’t load that';
   return (
     <div className="mx-auto max-w-md px-4 py-16 text-center" role="alert">
       <p className="text-lg font-semibold">{title}</p>
       <p className="mt-1.5 text-[14px] leading-relaxed text-muted">{error.error}</p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
-        {error.code === 'upstream' && (
+        {(error.code === 'upstream' || error.code === 'busy') && (
           <button type="button" onClick={onRetry} className="btn btn-primary">
             <RotateCw className="size-4" aria-hidden /> Try again
           </button>

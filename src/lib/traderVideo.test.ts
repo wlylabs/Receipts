@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { traderStory } from './traderVideo';
+import { tradesCsv, traderStory } from './traderVideo';
 import { position } from './receipts';
 import { timeOf } from './replayVideo';
 import type { Candle } from './candles';
@@ -61,5 +61,20 @@ describe('trader video story', () => {
     expect(video.pops?.[0]?.tone).toBe('neg');
     expect(video.captions.at(-1)?.tone).toBe('neg');
     expect(video.captions.map((c) => c.text).some((t) => t.includes('on paper'))).toBe(false);
+  });
+});
+
+describe('trades as CSV', () => {
+  it('writes a header and one row per trade, quoting what needs it', () => {
+    const r = receipts([
+      [1000, 'buy', 10, 20, 2, 'tx,1', 'swap', 'exact', 0.01],
+      [1060, 'sell', 4, 12, 3, 'tx2', 'transfer', 'candle', 0],
+    ]);
+    const lines = tradesCsv(r).trim().split('\n');
+    expect(lines).toHaveLength(3);
+    expect(lines[0]).toMatch(/^time_utc,side,kind/);
+    expect(lines[1]).toContain('"tx,1"');
+    expect(lines[1]).toContain('1970-01-01T00:16:40.000Z,buy,swap,10,20,2,trade,0.01');
+    expect(lines[2]).toContain('sell,transfer,4,12,3,chart,0,tx2');
   });
 });

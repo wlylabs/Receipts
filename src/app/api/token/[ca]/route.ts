@@ -1,9 +1,11 @@
 import { loadToken } from '../../../../lib/load';
 import { leaderboard, windowOf } from '../../../../lib/receipts';
-import { fail, ok } from '../../../../lib/respond';
+import { fail, ok, tooMany } from '../../../../lib/respond';
 import type { TokenReceipts } from '../../../../lib/types';
 
-export async function GET(_req: Request, ctx: { params: Promise<{ ca: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ ca: string }> }) {
+  const limited = tooMany(req, 'token', 30);
+  if (limited) return limited;
   const { ca } = await ctx.params;
   try {
     const r = await loadToken(ca);
