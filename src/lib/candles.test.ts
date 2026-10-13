@@ -11,6 +11,10 @@ describe('candles', () => {
     ]);
   });
 
+  it('keeps one candle per time when the feed repeats one', () => {
+    expect(toCandles([[300, 1, 2, 1, 2, 0], [300, 1, 2, 1, 2, 0], [0, 1, 1, 1, 1, 0]]).map((c) => c[0])).toEqual([0, 300]);
+  });
+
   it('finds the candle size from the usual gap', () => {
     expect(stepOf([[0, 1, 1, 1, 1], [300, 1, 1, 1, 1], [600, 1, 1, 1, 1], [1500, 1, 1, 1, 1]])).toBe(300);
   });

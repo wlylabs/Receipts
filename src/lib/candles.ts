@@ -5,10 +5,10 @@ export type Candle = [number, number, number, number, number];
 
 /** Candles from GeckoTerminal's [ts, open, high, low, close, volume] rows, oldest first. */
 export function toCandles(ohlcv: readonly number[][]): Candle[] {
-  return ohlcv
-    .filter((c) => c.length >= 5 && c[1]! > 0 && c[2]! > 0 && c[3]! > 0 && c[4]! > 0)
-    .map((c): Candle => [c[0]!, c[1]!, c[2]!, c[3]!, c[4]!])
-    .sort((a, b) => a[0] - b[0]);
+  // GeckoTerminal sometimes sends a candle twice at the edge of a page: keep one per time
+  const byTs = new Map<number, Candle>();
+  for (const c of ohlcv) if (c.length >= 5 && c[1]! > 0 && c[2]! > 0 && c[3]! > 0 && c[4]! > 0) byTs.set(c[0]!, [c[0]!, c[1]!, c[2]!, c[3]!, c[4]!]);
+  return [...byTs.values()].sort((a, b) => a[0] - b[0]);
 }
 
 /** The candle size in seconds: the most common gap between candles. */

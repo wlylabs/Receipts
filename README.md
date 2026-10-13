@@ -65,7 +65,8 @@ Every variable is optional; see [`.env.example`](.env.example).
 | `PAY_WALLET` + `PAY_SECRET` | Makes each video download paid: the preview stays free, and **Download** asks for USDC or SOL sent to `PAY_WALLET` (a Solana address) from the viewer's wallet or by scanning a Solana Pay code. `PAY_SECRET` is any long random string that signs the price quotes. The payment is checked on chain before the file is made. Unset, downloads are free. |
 | `OWNER_KEY` | Lets the owner download free: open `/owner/?key=<OWNER_KEY>` once in a browser and its downloads are never paid (`/owner/?off` signs it out). Use 16+ random characters; changing it signs every browser out. |
 | `PAY_PRICE_USD` | The price of one download in dollars (default `1`). SOL is priced from Pyth's SOL/USD (DexScreener if Pyth is out) at the time of the quote. |
-| `SOLANA_RPC_URL` | Your own Solana RPC (a free Helius/Triton/QuickNode key). Reads 120 transactions per wallet and token instead of 30, without being throttled. **Recommended in production.** |
+| `SOLANA_RPC_URL` | Your own Solana RPC (a free Helius/Triton/QuickNode key). Reads 120 transactions per wallet and token instead of 30, without being throttled, and turns on live replays: the server listens on the RPC's websocket for the wallet's new transactions (`/api/live`, the key stays on the server) and the page reads its trades again as they land. **Recommended in production.** |
+| `SOLANA_WS_URL` | The RPC's websocket, when it isn't `SOLANA_RPC_URL` with `wss://`. |
 | `ETHERSCAN_API_KEY` | Etherscan V2, used for wallet history on every chain it covers in place of Blockscout and Routescan. Turns on BNB Chain (if your plan covers it). Blockscout sits behind bot protection that can turn away server IPs, so a key is the steadier choice in production. |
 | `BSC_EXPLORER_API` | Any other Etherscan-compatible endpoint for BNB Chain. |
 | `GECKOTERMINAL_API`, `PYTH_BENCHMARKS_URL` | Use a different endpoint for those sources. |
@@ -76,7 +77,7 @@ Every variable is optional; see [`.env.example`](.env.example).
 ## Layout
 
 ```
-src/app/api/       route handlers: token, trader, wallet, pay
+src/app/api/       route handlers: token, trader, wallet, candles, live, pay
 src/lib/upstream   DexScreener + GeckoTerminal
 src/lib/solana     Solana RPC: holdings, moves, swap/transfer reading
 src/lib/evm        Etherscan-style explorers: holdings, moves, swap/transfer reading
