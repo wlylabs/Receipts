@@ -48,41 +48,29 @@ describe('candles', () => {
     }
   });
 
-  it('merges trades of one side in one candle, or close by, into one marker', () => {
-    const k = five(3);
-    const merged = mergeMarkers(
-      [
-        { ts: 10, price: 1.2, kind: 'buy' },
-        { ts: 100, price: 1.1, kind: 'buy' },
-        { ts: 350, price: 2, kind: 'buy' },
-        { ts: 400, price: 2.5, kind: 'sell' },
-        { ts: 700, price: 3, kind: 'sell' },
-      ],
-      k,
-      300,
-      0,
-    );
-    expect(merged).toEqual([
-      { ts: 10, price: 1.1, kind: 'buy', count: 2 },
-      { ts: 350, price: 2, kind: 'buy' },
-      { ts: 400, price: 2.5, kind: 'sell' },
-      { ts: 700, price: 3, kind: 'sell' },
-    ]);
-  });
-
-  it('keeps a buy and a sell in one candle apart, the buy under it and the sell over it', () => {
+  it('marks each candle once per side, the buy under it and the sell over it', () => {
     const k = five(3);
     const t = (ts: number, kind: 'buy' | 'sell', price = 1) => ({ ts, price, kind });
-    expect(mergeMarkers([t(10, 'buy'), t(20, 'sell', 2), t(30, 'buy'), t(40, 'sell', 3), t(50, 'sell')], k, 300)).toEqual([
-      { ts: 10, price: 1, kind: 'buy', count: 2 },
-      { ts: 20, price: 3, kind: 'sell', count: 3 },
+    expect(mergeMarkers([t(10, 'buy', 1.2), t(20, 'sell', 2), t(30, 'buy', 1.1), t(40, 'sell', 3), t(350, 'buy', 2), t(700, 'sell')], k, 300)).toEqual([
+      { ts: 10, price: 1.1, kind: 'buy' },
+      { ts: 20, price: 3, kind: 'sell' },
+      { ts: 350, price: 2, kind: 'buy' },
+      { ts: 700, price: 1, kind: 'sell' },
     ]);
   });
 
-  it('merges trades a few candles apart too', () => {
+  it('shows trades apart on finer candles and together on coarser ones', () => {
+    // five buys a minute apart: five markers on 1-minute candles, one on a 5-minute candle
+    const buys = [0, 60, 120, 180, 240].map((ts) => ({ ts, price: 1, kind: 'buy' as const }));
+    const minute: Candle[] = buys.map(({ ts }) => [ts, 1, 1, 1, 1]);
+    expect(mergeMarkers(buys, minute, 60)).toHaveLength(5);
+    expect(mergeMarkers(buys, [[0, 1, 1, 1, 1]], 300)).toHaveLength(1);
+  });
+
+  it('can take in trades a few candles on too', () => {
     const k = five(10);
     const m = (ts: number) => ({ ts, price: 1, kind: 'buy' as const });
-    expect(mergeMarkers([m(0), m(600), m(900), m(2400)], k, 300)).toHaveLength(2);
+    expect(mergeMarkers([m(0), m(600), m(900), m(2400)], k, 300, 3)).toHaveLength(2);
   });
 });
 

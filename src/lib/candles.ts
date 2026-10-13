@@ -176,17 +176,17 @@ export function drawLine(g: CanvasRenderingContext2D, candles: readonly Candle[]
 }
 
 /**
- * Trades close together as one marker, so they do not pile up: trades of one side whose candles
- * are at most `gap` candles from the first in their group (on a phone a candle is a few pixels
- * wide, narrower than a marker). Buys and sells are grouped apart, since buys sit under their
- * candle and sells over it, so the two never collide even inside one candle. A group sits at its
- * first trade's time (so it pops when the replay reaches it), at the lowest buy or the highest
- * sell, and counts its trades when there are several.
+ * One marker per candle and side, the way OKX's wallet chart marks trades: every buy in a candle is
+ * one B under it, every sell one S over it, so the two never collide even inside one candle. A
+ * coarser chart folds more trades into each marker; a finer one shows them apart, so the markers
+ * always match the candles on screen. Trades up to `gap` candles after a group's first join it too.
+ * A marker sits at its first trade's time (so it pops when the replay reaches it), at the lowest
+ * buy or the highest sell.
  */
-export function mergeMarkers(markers: readonly Marker[], candles: readonly Candle[], step: number, gap = 3): Marker[] {
+export function mergeMarkers(markers: readonly Marker[], candles: readonly Candle[], step: number, gap = 0): Marker[] {
   const index = (ts: number) => {
     const k = candleAt(candles, step, ts);
-    return k ? candles.indexOf(k) : Math.round(ts / Math.max(1, step));
+    return k ? candles.indexOf(k) : Math.floor(ts / Math.max(1, step));
   };
   const out: Marker[] = [];
   for (const kind of ['buy', 'sell'] as const) {
@@ -199,12 +199,7 @@ export function mergeMarkers(markers: readonly Marker[], candles: readonly Candl
     }
     for (const { list } of groups) {
       const prices = list.map((m) => m.price);
-      out.push({
-        ts: list[0]!.ts,
-        price: kind === 'buy' ? Math.min(...prices) : Math.max(...prices),
-        kind,
-        ...(list.length > 1 ? { count: list.length } : {}),
-      });
+      out.push({ ts: list[0]!.ts, price: kind === 'buy' ? Math.min(...prices) : Math.max(...prices), kind });
     }
   }
   return out.sort((a, b) => a.ts - b.ts || (a.kind === 'buy' ? -1 : 1));

@@ -777,7 +777,7 @@ function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker
   g.lineTo(13, dir * 18);
   g.closePath();
   g.fill();
-  const text = m.label ?? (buy ? 'BUY' : 'SELL') + (m.count ? ` ×${m.count}` : '');
+  const text = m.label ?? (buy ? 'BUY' : 'SELL');
   font(g, 24, 700);
   const w = g.measureText(text).width + 26;
   const top = buy ? 24 : -24 - 40;

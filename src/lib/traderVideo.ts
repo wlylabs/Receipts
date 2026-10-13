@@ -72,7 +72,7 @@ export function traderStory(r: TraderReceipts): TraderStory {
     ...(r.of > 1 ? [{ k: 'vs traders', v: `#${r.place} of ${r.of}` }] : []),
   ];
 
-  // buys and sells close together merge per side, so they do not pile up
+  // one marker per candle and side, like OKX's chart
   const markers = mergeMarkers(
     swaps.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side })),
     chart.candles,

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { bucket, candleAt, endedUp, logTicks, range, upTo, type Candle } from '../lib/candles';
+import { bucket, candleAt, endedUp, logTicks, mergeMarkers, range, upTo, type Candle } from '../lib/candles';
 import { cx } from '../lib/cx';
 import { paletteOf, shape } from '../lib/chartStyle';
 import { useChartStyle } from '../hooks/useChartStyle';
@@ -12,8 +12,6 @@ export interface Marker {
   kind: 'buy' | 'sell';
   /** Short text on the marker; B or S when left out. */
   label?: string;
-  /** Trades of this side the marker stands for, when it stands for more than one. */
-  count?: number;
 }
 
 const VW = 1000;
@@ -85,6 +83,9 @@ export function ReplayChart({
     return px && all.length > max ? bucket(all, max) : { candles: all, step: allStep };
   }, [all, allStep, px]);
 
+  // the markers re-merged on the candles drawn: when they merge to fit the width, so do the trades
+  const marks = useMemo(() => mergeMarkers(markers, candles, step), [markers, candles, step]);
+
   const geo = useMemo(() => {
     if (candles.length < 2) return null;
     const t0 = candles[0]![0];
@@ -144,7 +145,7 @@ export function ReplayChart({
           )}
         </svg>
 
-        {markers
+        {marks
           .filter((m) => m.ts >= geo.t0 && m.ts <= playhead + 1)
           .map((m, i) => {
             const k = candleAt(candles, step, m.ts);
@@ -159,7 +160,7 @@ export function ReplayChart({
                 <span className={cx('text-[9px]', buy ? 'text-pos' : 'text-neg')} aria-hidden>
                   {buy ? '▲' : '▼'}
                 </span>
-                <span className={cx('whitespace-nowrap rounded px-1 py-0.5 text-[9.5px] font-semibold text-white shadow-sm', buy ? 'bg-pos' : 'bg-neg')}>{m.label ?? (buy ? 'B' : 'S') + (m.count ? ` ×${m.count}` : '')}</span>
+                <span className={cx('whitespace-nowrap rounded px-1 py-0.5 text-[9.5px] font-semibold text-white shadow-sm', buy ? 'bg-pos' : 'bg-neg')}>{m.label ?? (buy ? 'B' : 'S')}</span>
               </span>
             );
           })}
