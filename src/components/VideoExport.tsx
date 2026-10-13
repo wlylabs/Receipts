@@ -9,6 +9,8 @@ import { cx } from '../lib/cx';
 import { Sheet } from './Sheet';
 import { useChartStyle } from '../hooks/useChartStyle';
 import { ChartStylePicker } from './ChartStylePicker';
+import { Paywall } from './Paywall';
+import type { PayInfo } from '../lib/types';
 
 /** A button that opens the video maker: pick a size and a length, watch it, download it. */
 export function VideoExport({ video, fileBase, className, title }: { video: ReplayVideo; fileBase: string; className?: string; title?: string }) {
@@ -42,6 +44,10 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
   const [sound, setSound] = useState(true);
   const [progress, setProgress] = useState<number | null>(null);
   const [restart, setRestart] = useState(0);
+  // a paid download: the price, the paywall showing, and a payment not yet spent on a file
+  const [pay, setPay] = useState<PayInfo | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [unlocked, setUnlocked] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
   const audio = useRef<AudioContext | null>(null);
   const { width, height } = FORMATS[format];
@@ -68,6 +74,17 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
 
   useEffect(() => () => void audio.current?.close().catch(() => undefined), []);
 
+  useEffect(() => {
+    let live = true;
+    fetch('/api/pay/', { cache: 'no-store' })
+      .then((r) => r.json() as Promise<PayInfo>)
+      .then((p) => live && setPay(p))
+      .catch(() => live && setPay({ paid: false }));
+    return () => {
+      live = false;
+    };
+  }, []);
+
   // plays the sound once from the top, with the preview restarted under it
   const listen = async () => {
     try {
@@ -86,14 +103,19 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
     }
   };
 
-  const make = async () => {
+  const locked = pay?.paid && !unlocked;
+  const make = async (paidNow = false) => {
     if (progress !== null) return;
+    if (locked && !paidNow) return setPaying(true);
+    setPaying(false);
     setProgress(0);
     try {
       const { renderReplayVideo } = await import('../lib/replayVideo');
       const out = await renderReplayVideo(video, format, length, { sound }, setProgress);
       const name = `${fileBase}-${FORMATS[format].ratio.replace(':', 'x')}-${Math.round(seconds)}s.${out.extension}`;
       const res = await saveFile(new File([out.blob], name, { type: out.blob.type }));
+      // the payment buys one file: the next one is paid again
+      if (res !== 'cancelled') setUnlocked(false);
       if (out.extension !== 'mp4') toast('Saved as WebM: X and Instagram need MP4. Chrome or Safari make MP4.');
       else if (sound && !out.sound) toast('Saved without sound: this browser can’t encode audio.');
       else if (res === 'saved') toast('Video saved.');
@@ -174,10 +196,21 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
         )}
       </div>
 
-      <button type="button" onClick={make} disabled={busy} className="btn btn-primary mt-4 h-11 w-full">
-        {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
-        {busy ? `Rendering ${Math.round(progress * 100)}%` : `Download ${FORMATS[format].ratio} · ${Math.round(seconds)} s`}
-      </button>
+      {paying && pay?.paid ? (
+        <Paywall
+          priceUsd={pay.priceUsd}
+          onCancel={() => setPaying(false)}
+          onPaid={() => {
+            setUnlocked(true);
+            void make(true);
+          }}
+        />
+      ) : (
+        <button type="button" onClick={() => make()} disabled={busy || !pay} className="btn btn-primary mt-4 h-11 w-full">
+          {busy || !pay ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
+          {busy ? `Rendering ${Math.round(progress * 100)}%` : `Download ${FORMATS[format].ratio} · ${Math.round(seconds)} s${locked ? ` · $${pay.priceUsd.toFixed(pay.priceUsd % 1 ? 2 : 0)}` : ''}`}
+        </button>
+      )}
       {busy && (
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-subtle" aria-hidden>
           <div className="h-full bg-ink transition-[width]" style={{ width: `${progress * 100}%` }} />

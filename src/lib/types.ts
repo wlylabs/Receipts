@@ -219,3 +219,16 @@ export interface ApiError {
   error: string;
   code: 'invalid' | 'not-found' | 'no-trades' | 'unsupported' | 'upstream' | 'busy';
 }
+
+/** Whether downloads are paid here, and their price. */
+export type PayInfo = { paid: false } | { paid: true; priceUsd: number };
+
+/** One download's price in a coin, and the Solana Pay link that pays it. */
+export interface PayQuote {
+  token: string;
+  coin: 'USDC' | 'SOL';
+  /** As people read it, e.g. "1" or "0.00612". */
+  amount: string;
+  url: string;
+  exp: number;
+}

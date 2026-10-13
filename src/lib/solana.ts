@@ -14,7 +14,7 @@ const TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQd
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function rpc<T>(method: string, params: unknown[]): Promise<T> {
+export async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     const res = await fetch(RPC, {
       method: 'POST',
