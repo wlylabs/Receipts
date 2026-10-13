@@ -1,6 +1,6 @@
 import type { Marker } from '../components/ReplayChart';
 import { renderSound, SAMPLE_RATE, tickStep, type Cue } from './videoSound';
-import { X_DARK, X_LIGHT, type VideoTheme } from './palette';
+import { NIGHT, X_LIGHT, type VideoTheme } from './palette';
 import { DEFAULT_STYLE, paletteOf, shape, type ChartStyle } from './chartStyle';
 import { candleAt, drawCandles, drawLine, endedUp, logTicks, range, upTo, type Candle } from './candles';
 
@@ -152,7 +152,7 @@ export interface ReplayVideo {
   paced?: boolean;
   /** How the candles are drawn; plain green and red candles when left out. */
   candleStyle?: ChartStyle;
-  /** X's light or dark colours; light when left out. */
+  /** Light like X's timeline or dark like DexScreener's night chart; light when left out. */
   theme?: VideoTheme;
   /** Formats an axis value (already scaled). */
   label: (n: number) => string;
@@ -175,7 +175,7 @@ let { bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = X_LIGHT
 const onFill = (fill: string) => (fill === INK ? BG : '#ffffff');
 
 function setPalette(theme: VideoTheme | undefined) {
-  ({ bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = theme === 'dark' ? X_DARK : X_LIGHT);
+  ({ bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = theme === 'dark' ? NIGHT : X_LIGHT);
 }
 const SANS = "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, Menlo, monospace";

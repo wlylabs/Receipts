@@ -43,7 +43,7 @@ export function VideoSheet({ video, fileBase, open, onClose, title = 'Make a vid
 function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string }) {
   // the video draws its candles the way the page's charts do
   const [style] = useChartStyle();
-  // light or dark like X's timeline: the page's theme until one is picked here
+  // light like X's timeline or dark like DexScreener's night chart: the page's theme until one is picked here
   const [pickedTheme, setTheme] = useStored<VideoTheme | null>(KEYS.videoTheme, null);
   const [pageTheme] = useState<VideoTheme>(() => currentTheme());
   const theme: VideoTheme = pickedTheme === 'light' || pickedTheme === 'dark' ? pickedTheme : pageTheme;
@@ -241,7 +241,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
       </p>
 
       <div className="mt-4 flex justify-center rounded-xl border border-line bg-subtle p-2">
-        <canvas key={`${format}`} ref={canvas} width={previewW} height={Math.round((previewW * height) / width)} className={cx('block h-auto rounded-md', theme === 'dark' ? 'bg-black' : 'bg-white', format === 'portrait' ? 'w-[46%] sm:w-[34%]' : format === 'square' ? 'w-[78%] sm:w-[62%]' : 'w-full')} aria-label="Video preview" />
+        <canvas key={`${format}`} ref={canvas} width={previewW} height={Math.round((previewW * height) / width)} className={cx('block h-auto rounded-md', theme === 'dark' ? 'bg-[#131722]' : 'bg-white', format === 'portrait' ? 'w-[46%] sm:w-[34%]' : format === 'square' ? 'w-[78%] sm:w-[62%]' : 'w-full')} aria-label="Video preview" />
       </div>
       <div className="mt-2 flex items-center justify-between gap-3">
         <p className="text-[12.5px] text-muted">

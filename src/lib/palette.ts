@@ -16,20 +16,20 @@ export const X_LIGHT = {
 } as const;
 
 /**
- * X in dark mode ("Lights out"), for a video made to sit in a dark timeline: black, light greys,
- * dark hairlines, and the same green and red.
+ * The night chart colours of DexScreener (TradingView's dark theme), for a dark video: a deep
+ * blue-grey rather than pure black, soft greys, faint grid lines, and the same green and red.
  */
-export const X_DARK = {
-  bg: '#000000',
-  ink: '#e7e9ea',
-  ink2: '#c4c8cb',
-  muted: '#71767b',
-  line: '#2f3336',
-  subtle: '#16181c',
+export const NIGHT = {
+  bg: '#131722',
+  ink: '#d1d4dc',
+  ink2: '#b2b5be',
+  muted: '#787b86',
+  line: '#2a2e39',
+  subtle: '#1e222d',
   pos: '#00ba7c',
   neg: '#f4212e',
-  posWash: '#071d15',
-  negWash: '#250609',
+  posWash: '#0f2a26',
+  negWash: '#2f1a20',
 } as const;
 
 export type VideoTheme = 'light' | 'dark';
