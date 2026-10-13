@@ -562,7 +562,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
       const c = candleAt(v.candles, v.step, m.ts);
       const buy = m.kind === 'buy';
       const py = buy ? geo.Y(Math.min(c?.[3] ?? m.price, m.price)) : geo.Y(Math.max(c?.[2] ?? m.price, m.price));
-      drawMarker(g, geo.X(c ? c[0] + v.step / 2 : m.ts), py, m, k, big);
+      drawMarker(g, geo.X(c ? c[0] + v.step / 2 : m.ts), py, m, k, big, x0, px1);
     }
   }
   g.restore();
@@ -758,8 +758,12 @@ function drawPill(g: CanvasRenderingContext2D, x: number, y: number, text: strin
   g.fillText(text, x + size * 0.55, y + size * 0.05);
 }
 
-/** A trade on its candle: an arrow and a pill, under the candle for a buy and over it for a sell. */
-function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker, k: number, scale: number) {
+/**
+ * A trade on its candle: an arrow and a pill, under the candle for a buy and over it for a sell.
+ * The arrow stays on the candle; the pill slides in to stay between `lo` and `hi`, the chart's
+ * edges, so a marker on the newest candle isn't cut off.
+ */
+function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker, k: number, scale: number, lo: number, hi: number) {
   if (k <= 0) return;
   const buy = m.kind === 'buy';
   const dir = buy ? 1 : -1;
@@ -773,16 +777,19 @@ function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker
   g.lineTo(13, dir * 18);
   g.closePath();
   g.fill();
-  const text = m.label ?? (buy ? 'BUY' : 'SELL');
+  const text = m.label ?? (buy ? 'BUY' : 'SELL') + (m.count ? ` ×${m.count}` : '');
   font(g, 24, 700);
   const w = g.measureText(text).width + 26;
   const top = buy ? 24 : -24 - 40;
+  // how far the pill shifts, in its own units, to stay inside the chart
+  const z = k * scale;
+  const shift = (Math.max(lo - (x - (w / 2) * z), 0) + Math.min(hi - (x + (w / 2) * z), 0)) / z;
   g.beginPath();
-  g.roundRect(-w / 2, top, w, 40, 10);
+  g.roundRect(shift - w / 2, top, w, 40, 10);
   g.fill();
   g.fillStyle = '#ffffff';
   g.textAlign = 'center';
-  g.fillText(text, 0, top + 29);
+  g.fillText(text, shift, top + 29);
   g.restore();
 }
 

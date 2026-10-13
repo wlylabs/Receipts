@@ -12,6 +12,8 @@ export interface Marker {
   kind: 'buy' | 'sell';
   /** Short text on the marker; B or S when left out. */
   label?: string;
+  /** Trades of this side the marker stands for, when it stands for more than one. */
+  count?: number;
 }
 
 const VW = 1000;
@@ -157,7 +159,7 @@ export function ReplayChart({
                 <span className={cx('text-[9px]', buy ? 'text-pos' : 'text-neg')} aria-hidden>
                   {buy ? '▲' : '▼'}
                 </span>
-                <span className={cx('rounded px-1 py-0.5 text-[9.5px] font-semibold text-white shadow-sm', buy ? 'bg-pos' : 'bg-neg')}>{m.label ?? (buy ? 'B' : 'S')}</span>
+                <span className={cx('whitespace-nowrap rounded px-1 py-0.5 text-[9.5px] font-semibold text-white shadow-sm', buy ? 'bg-pos' : 'bg-neg')}>{m.label ?? (buy ? 'B' : 'S') + (m.count ? ` ×${m.count}` : '')}</span>
               </span>
             );
           })}

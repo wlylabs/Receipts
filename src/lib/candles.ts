@@ -176,35 +176,38 @@ export function drawLine(g: CanvasRenderingContext2D, candles: readonly Candle[]
 }
 
 /**
- * Trades close together as one marker, so they do not pile up: trades whose candles are at most
- * `gap` candles from the first in their group (on a phone a candle is a few pixels wide, narrower
- * than a marker). A group of one kind is one B or S; one with both is "B/S", coloured by its last
- * trade. It sits at the first trade's time (so it pops when the replay reaches it) and at the
- * lowest buy or the highest sell.
+ * Trades close together as one marker, so they do not pile up: trades of one side whose candles
+ * are at most `gap` candles from the first in their group (on a phone a candle is a few pixels
+ * wide, narrower than a marker). Buys and sells are grouped apart, since buys sit under their
+ * candle and sells over it, so the two never collide even inside one candle. A group sits at its
+ * first trade's time (so it pops when the replay reaches it), at the lowest buy or the highest
+ * sell, and counts its trades when there are several.
  */
 export function mergeMarkers(markers: readonly Marker[], candles: readonly Candle[], step: number, gap = 3): Marker[] {
-  const groups: { at: number; list: Marker[] }[] = [];
   const index = (ts: number) => {
     const k = candleAt(candles, step, ts);
     return k ? candles.indexOf(k) : Math.round(ts / Math.max(1, step));
   };
-  for (const m of [...markers].sort((a, b) => a.ts - b.ts)) {
-    const i = index(m.ts);
-    const g = groups.at(-1);
-    if (g && i - g.at <= gap) g.list.push(m);
-    else groups.push({ at: i, list: [m] });
+  const out: Marker[] = [];
+  for (const kind of ['buy', 'sell'] as const) {
+    const groups: { at: number; list: Marker[] }[] = [];
+    for (const m of markers.filter((x) => x.kind === kind).sort((a, b) => a.ts - b.ts)) {
+      const i = index(m.ts);
+      const g = groups.at(-1);
+      if (g && i - g.at <= gap) g.list.push(m);
+      else groups.push({ at: i, list: [m] });
+    }
+    for (const { list } of groups) {
+      const prices = list.map((m) => m.price);
+      out.push({
+        ts: list[0]!.ts,
+        price: kind === 'buy' ? Math.min(...prices) : Math.max(...prices),
+        kind,
+        ...(list.length > 1 ? { count: list.length } : {}),
+      });
+    }
   }
-  return groups.map(({ list }) => {
-    const last = list.at(-1)!;
-    const mixed = list.some((m) => m.kind !== list[0]!.kind);
-    const same = list.filter((m) => m.kind === last.kind).map((m) => m.price);
-    return {
-      ts: list[0]!.ts,
-      price: last.kind === 'buy' ? Math.min(...same) : Math.max(...same),
-      kind: last.kind,
-      ...(mixed ? { label: 'B/S' } : {}),
-    };
-  });
+  return out.sort((a, b) => a.ts - b.ts || (a.kind === 'buy' ? -1 : 1));
 }
 
 /**

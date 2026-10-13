@@ -48,7 +48,7 @@ describe('candles', () => {
     }
   });
 
-  it('merges trades in one candle, or close by, into one marker', () => {
+  it('merges trades of one side in one candle, or close by, into one marker', () => {
     const k = five(3);
     const merged = mergeMarkers(
       [
@@ -63,9 +63,19 @@ describe('candles', () => {
       0,
     );
     expect(merged).toEqual([
-      { ts: 10, price: 1.1, kind: 'buy' },
-      { ts: 350, price: 2.5, kind: 'sell', label: 'B/S' },
+      { ts: 10, price: 1.1, kind: 'buy', count: 2 },
+      { ts: 350, price: 2, kind: 'buy' },
+      { ts: 400, price: 2.5, kind: 'sell' },
       { ts: 700, price: 3, kind: 'sell' },
+    ]);
+  });
+
+  it('keeps a buy and a sell in one candle apart, the buy under it and the sell over it', () => {
+    const k = five(3);
+    const t = (ts: number, kind: 'buy' | 'sell', price = 1) => ({ ts, price, kind });
+    expect(mergeMarkers([t(10, 'buy'), t(20, 'sell', 2), t(30, 'buy'), t(40, 'sell', 3), t(50, 'sell')], k, 300)).toEqual([
+      { ts: 10, price: 1, kind: 'buy', count: 2 },
+      { ts: 20, price: 3, kind: 'sell', count: 3 },
     ]);
   });
 
