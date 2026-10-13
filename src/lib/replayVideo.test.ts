@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LENGTHS, playAt, soundCues, timeOf, timingOf, zoomAt, type ReplayVideo } from './replayVideo';
+import { LENGTHS, playAt, recommendLength, soundCues, timeOf, timingOf, zoomAt, type ReplayVideo } from './replayVideo';
 import type { Candle } from './candles';
 
 describe('replay video timing', () => {
@@ -126,5 +126,32 @@ describe('long replay video', () => {
     expect(stamp?.t).toBeGreaterThan(T.play);
     expect(stamp!.t).toBeLessThan(T.seconds);
     expect(soundCues(video, 'story').some((c) => c.kind === 'stamp')).toBe(false);
+  });
+});
+
+describe('recommended length', () => {
+  const run = (trades: number, captions: number) => ({
+    from: 0,
+    to: 10_000,
+    markers: Array.from({ length: trades }, (_, i) => ({ ts: ((i + 1) * 10_000) / (trades + 1), price: 1, kind: 'buy' as const })),
+    captions: Array.from({ length: captions }, (_, i) => ({ ts: i * 100, text: 'x', tone: null })),
+  });
+  it('picks the short cut for a moment or two', () => {
+    expect(recommendLength(run(1, 1)).length).toBe('short');
+    expect(recommendLength(run(0, 2)).length).toBe('short');
+  });
+  it('picks the story cut for a handful', () => {
+    expect(recommendLength(run(2, 3)).length).toBe('story');
+  });
+  it('picks the long cut for many moments, and says why', () => {
+    const r = recommendLength(run(6, 4));
+    expect(r.length).toBe('long');
+    expect(r.reason).toMatch(/^6 trades and 4 captions/);
+  });
+  it('counts a market by its captions', () => {
+    const market = (captions: number) => ({ ...run(0, captions), paced: true, candles: Array.from({ length: 80 }, (_, i) => [i * 100, 1, 1, 1, 1] as Candle) });
+    expect(recommendLength(market(4)).length).toBe('story');
+    expect(recommendLength(market(8)).length).toBe('long');
+    expect(recommendLength(market(8)).reason).toMatch(/^8 moments/);
   });
 });

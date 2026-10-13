@@ -82,6 +82,21 @@ export function timingOf(l: VideoLength, v?: Run): Timing {
   return { seconds, hook: T.hook, play };
 }
 
+/**
+ * The cut that suits a run, and why, from how much it has to tell: the trades on the chart and the
+ * captions. One or two moments make a short clip people watch to the end; a handful fill the
+ * story cut; many earn the long cut, unless it would come out barely longer than the story.
+ */
+export function recommendLength(v: Pick<ReplayVideo, 'from' | 'to' | 'markers' | 'captions'> & Partial<Pick<ReplayVideo, 'candles' | 'paced'>>): { length: VideoLength; reason: string } {
+  const trades = v.markers.filter((m) => m.ts >= v.from && m.ts <= v.to).length;
+  const moments = trades + v.captions.length;
+  const what = trades ? `${trades} ${trades === 1 ? 'trade' : 'trades'} and ${v.captions.length} ${v.captions.length === 1 ? 'caption' : 'captions'}` : `${moments} ${moments === 1 ? 'moment' : 'moments'}`;
+  if (moments <= 2) return { length: 'short', reason: `Only ${what} to show: a short clip keeps people watching to the end.` };
+  if (moments >= 7 && timingOf('long', v).seconds >= timingOf('story', v).seconds + 6)
+    return { length: 'long', reason: `${what[0]!.toUpperCase()}${what.slice(1)} to tell: the long cut gives each room and ends on the receipt.` };
+  return { length: 'story', reason: `${what[0]!.toUpperCase()}${what.slice(1)}: the story cut has time to caption each one.` };
+}
+
 export const FPS = 30;
 
 export interface Caption {

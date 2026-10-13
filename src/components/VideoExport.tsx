@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clapperboard, Download, Loader2, Play, Volume2, VolumeX } from 'lucide-react';
-import { drawFrame, FORMATS, LENGTHS, soundCues, timingOf, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
+import { drawFrame, FORMATS, LENGTHS, recommendLength, soundCues, timingOf, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
 import { saveFile } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
@@ -41,7 +41,9 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
   const [style] = useChartStyle();
   const video = useMemo(() => ({ ...run, candleStyle: style }), [run, style]);
   const [format, setFormat] = useState<VideoFormat>('square');
-  const [length, setLength] = useState<VideoLength>('short');
+  // the cut that suits this run is picked to start with, and marked
+  const pick = useMemo(() => recommendLength(run), [run]);
+  const [length, setLength] = useState<VideoLength>(pick.length);
   const [sound, setSound] = useState(true);
   const [progress, setProgress] = useState<number | null>(null);
   const [restart, setRestart] = useState(0);
@@ -170,8 +172,8 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
       <p className="label mt-4 flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">2</span> Candles</p>
       <ChartStylePicker inline className="mt-1.5" />
 
-      <div className="mt-4 flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="mt-4 flex flex-wrap items-end gap-2 sm:gap-3">
+        <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
           <p className="label flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">3</span> Length</p>
           <div role="radiogroup" aria-label="Length" className="mt-1.5 flex rounded-lg bg-subtle p-0.5">
             {(Object.keys(LENGTHS) as VideoLength[]).map((l) => (
@@ -182,18 +184,24 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
                 aria-checked={l === length}
                 disabled={busy}
                 onClick={() => setLength(l)}
-                className={cx('h-9 flex-1 rounded-md px-2 text-[12.5px] font-medium', l === length ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
+                className={cx('flex min-h-11 flex-1 flex-col items-center justify-center rounded-md px-2 py-1 text-[12.5px] font-medium', l === length ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
               >
-                {LENGTHS[l].label} <span className="text-muted">· {Math.round(timingOf(l, video).seconds)} s</span>
+                <span className="whitespace-nowrap">
+                  {LENGTHS[l].label} <span className="text-muted">· {Math.round(timingOf(l, video).seconds)} s</span>
+                </span>
+                {l === pick.length && <span className="mono mt-0.5 rounded bg-accent px-1 text-[9px] font-bold uppercase tracking-wide text-on-accent">Recommended</span>}
               </button>
             ))}
           </div>
         </div>
-        <button type="button" onClick={() => setSound((s) => !s)} disabled={busy} aria-pressed={sound} className="btn btn-quiet h-10 px-3">
+        <button type="button" onClick={() => setSound((s) => !s)} disabled={busy} aria-pressed={sound} className="btn btn-quiet h-11 px-3">
           {sound ? <Volume2 className="size-4" aria-hidden /> : <VolumeX className="size-4" aria-hidden />}
           {sound ? 'Sound on' : 'Sound off'}
         </button>
       </div>
+      <p className="mt-1.5 text-[12px] leading-snug text-muted">
+        {length === pick.length ? pick.reason : `Recommended: ${LENGTHS[pick.length].label}. ${pick.reason}`}
+      </p>
 
       <div className="mt-4 flex justify-center rounded-xl border border-line bg-subtle p-2">
         <canvas key={`${format}`} ref={canvas} width={previewW} height={Math.round((previewW * height) / width)} className={cx('block h-auto rounded-md bg-white', format === 'portrait' ? 'w-[46%] sm:w-[34%]' : format === 'square' ? 'w-[78%] sm:w-[62%]' : 'w-full')} aria-label="Video preview" />
