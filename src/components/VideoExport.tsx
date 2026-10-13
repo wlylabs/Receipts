@@ -211,6 +211,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
           {busy ? `Rendering ${Math.round(progress * 100)}%` : `Download ${FORMATS[format].ratio} · ${Math.round(seconds)} s${locked ? ` · $${pay.priceUsd.toFixed(pay.priceUsd % 1 ? 2 : 0)}` : ''}`}
         </button>
       )}
+      {pay && !pay.paid && pay.owner && !paying && <p className="mt-2 text-center text-[12px] text-muted">Free for you: this browser is signed in as the owner.</p>}
       {busy && (
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-subtle" aria-hidden>
           <div className="h-full bg-ink transition-[width]" style={{ width: `${progress * 100}%` }} />

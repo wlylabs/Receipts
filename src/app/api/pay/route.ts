@@ -1,5 +1,5 @@
 import { fail, tooMany } from '../../../lib/respond';
-import { payConfig, quote } from '../../../lib/pay';
+import { isOwner, payConfig, quote } from '../../../lib/pay';
 import { shown, type Coin } from '../../../lib/payment';
 import { SITE_NAME } from '../../../lib/site';
 import { USDC_MINT } from '../../../lib/solanaTx';
@@ -7,9 +7,10 @@ import type { PayInfo, PayQuote } from '../../../lib/types';
 
 const fresh = (body: unknown) => Response.json(body, { headers: { 'Cache-Control': 'no-store' } });
 
-/** Whether downloads are paid, and what they cost. */
-export function GET() {
+/** Whether downloads are paid, and what they cost; never for the owner. */
+export function GET(req: Request) {
   const cfg = payConfig();
+  if (cfg && isOwner(req)) return fresh({ paid: false, owner: true } satisfies PayInfo);
   return fresh((cfg ? { paid: true, priceUsd: cfg.priceUsd } : { paid: false }) satisfies PayInfo);
 }
 

@@ -1,5 +1,5 @@
 import 'server-only';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { getAddressDecoder, isAddress } from '@solana/addresses';
 import { rpc } from './solana';
 import { nativeUsd } from './quotes';
@@ -17,6 +17,27 @@ const SECRET = process.env.PAY_SECRET ?? '';
 const PRICE = Number(process.env.PAY_PRICE_USD) > 0 ? Number(process.env.PAY_PRICE_USD) : 1;
 /** How long a quote takes new payments. */
 const TTL = 15 * 60;
+
+/**
+ * The owner downloads free: opening /owner/?key=OWNER_KEY once marks that browser with a cookie
+ * signed by PAY_SECRET. Changing OWNER_KEY signs every marked browser out.
+ */
+const OWNER_KEY = process.env.OWNER_KEY ?? '';
+export const OWNER_COOKIE = 'receipts_owner';
+const same = (a: string, b: string) => {
+  const x = Buffer.from(a);
+  const y = Buffer.from(b);
+  return x.length === y.length && timingSafeEqual(x, y);
+};
+/** The cookie's value for the owner, or null when no owner key is set (or it is too short to trust). */
+export const ownerMark = () => (OWNER_KEY.length >= 16 && SECRET ? createHmac('sha256', SECRET).update(`owner:${OWNER_KEY}`).digest('base64url') : null);
+export const isOwnerKey = (key: string) => !!ownerMark() && same(key, OWNER_KEY);
+export function isOwner(req: Request): boolean {
+  const mark = ownerMark();
+  if (!mark) return false;
+  const got = (req.headers.get('cookie') ?? '').split(/;\s*/).find((c) => c.startsWith(`${OWNER_COOKIE}=`))?.slice(OWNER_COOKIE.length + 1);
+  return !!got && same(got, mark);
+}
 
 export const payConfig = () => (WALLET && SECRET && isAddress(WALLET) ? { wallet: WALLET, priceUsd: PRICE } : null);
 

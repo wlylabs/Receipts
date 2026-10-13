@@ -221,7 +221,7 @@ export interface ApiError {
 }
 
 /** Whether downloads are paid here, and their price. */
-export type PayInfo = { paid: false } | { paid: true; priceUsd: number };
+export type PayInfo = { paid: false; owner?: boolean } | { paid: true; priceUsd: number };
 
 /** One download's price in a coin, and the Solana Pay link that pays it. */
 export interface PayQuote {
