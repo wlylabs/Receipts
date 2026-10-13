@@ -18,6 +18,8 @@ const PAD_TOP = 48;
 const PAD_BOTTOM = 44;
 /** Narrowest a candle may be on screen, in pixels: thinner ones blur into grey dots, so neighbours merge. */
 const MIN_PX = 3;
+/** Room an axis label needs, in screen pixels: its height and a little air. */
+const LABEL_PX = 20;
 
 /**
  * A token's candles on a log scale (memecoins move in multiples), the way DexScreener and
@@ -60,10 +62,14 @@ export function ReplayChart({
   // the plot's width on screen, so candles never get thinner than MIN_PX
   const plot = useRef<HTMLDivElement>(null);
   const [px, setPx] = useState(0);
+  const [tall, setTall] = useState(0);
   useEffect(() => {
     const el = plot.current;
     if (!el) return;
-    const ro = new ResizeObserver(([e]) => setPx(Math.round(e!.contentRect.width)));
+    const ro = new ResizeObserver(([e]) => {
+      setPx(Math.round(e!.contentRect.width));
+      setTall(Math.round(e!.contentRect.height));
+    });
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -97,8 +103,11 @@ export function ReplayChart({
   const pct = (v: number, of: number) => `${(v / of) * 100}%`;
   const hx = geo.x(playhead);
   const hy = geo.y(now);
-  // axis labels make way for the price tags
-  const labels = geo.ticks.filter((p) => Math.abs(geo.y(p) - hy) > VH * 0.07);
+  // axis labels make way for the price tag, and for each other, by real pixels: a phone's chart is
+  // short, so a share of its height is less than a label is tall
+  const gap = (LABEL_PX / Math.max(1, tall || 200)) * VH;
+  const labels: number[] = [];
+  for (const p of geo.ticks) if (Math.abs(geo.y(p) - hy) > gap && labels.every((q) => Math.abs(geo.y(q) - geo.y(p)) > gap * 0.8)) labels.push(p);
 
   return (
     <div className={cx('relative flex aspect-[5/2] w-full select-none', className)}>
