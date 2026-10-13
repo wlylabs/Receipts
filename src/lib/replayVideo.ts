@@ -2,7 +2,7 @@ import type { Marker } from '../components/ReplayChart';
 import { renderSound, SAMPLE_RATE, tickStep, type Cue } from './videoSound';
 import { X_LIGHT } from './palette';
 import { DEFAULT_STYLE, paletteOf, shape, type ChartStyle } from './chartStyle';
-import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './candles';
+import { candleAt, drawCandles, drawLine, endedUp, logTicks, range, upTo, type Candle } from './candles';
 
 /**
  * A video of one replay, drawn on a canvas and encoded in the browser: MP4 (H.264 + AAC) through
@@ -539,7 +539,9 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.translate(-fx, -fy);
   }
   const style = v.candleStyle ?? DEFAULT_STYLE;
-  drawCandles(g, shape(shown, style.kind), v.step, geo.X, geo.Y, { up: paletteOf(style).videoUp, down: paletteOf(style).videoDown, body: 0.68 });
+  const colors = paletteOf(style);
+  if (style.kind === 'line') drawLine(g, shown, v.step, geo.X, geo.Y, { color: endedUp(v.candles) ? colors.videoUp : colors.videoDown, width: 5 * big, floor: y1 });
+  else drawCandles(g, shape(shown, style.kind), v.step, geo.X, geo.Y, { up: colors.videoUp, down: colors.videoDown, body: 0.68 });
 
   // trades pop as the playhead reaches them, buys under their candle and sells over it
   if (playing) {

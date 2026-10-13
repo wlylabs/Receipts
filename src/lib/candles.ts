@@ -140,6 +140,41 @@ export function drawCandles(g: CanvasRenderingContext2D, candles: readonly Candl
   g.globalAlpha = prev;
 }
 
+/** Whether a run of candles ended up from where it opened, which colours a line chart. */
+export function endedUp(candles: readonly Candle[]): boolean {
+  return candles.length < 1 || candles.at(-1)![4] >= candles[0]![1];
+}
+
+/**
+ * Candles as a line through their closes on a canvas, each at its candle's middle, with a wash
+ * under it fading down to `floor` (the plot's bottom edge, in pixels).
+ */
+export function drawLine(g: CanvasRenderingContext2D, candles: readonly Candle[], step: number, X: (ts: number) => number, Y: (p: number) => number, s: { color: string; width: number; floor: number }) {
+  if (!candles.length) return;
+  const pts = candles.map(([ts, , , , c]) => [X(ts + step / 2), Y(c)] as const);
+  g.beginPath();
+  pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.save();
+  g.lineTo(pts.at(-1)![0], s.floor);
+  g.lineTo(pts[0]![0], s.floor);
+  g.closePath();
+  const top = Math.min(...pts.map(([, y]) => y));
+  const wash = g.createLinearGradient(0, top, 0, s.floor);
+  wash.addColorStop(0, s.color);
+  wash.addColorStop(1, 'transparent');
+  g.globalAlpha *= 0.22;
+  g.fillStyle = wash;
+  g.fill();
+  g.restore();
+  g.beginPath();
+  pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.strokeStyle = s.color;
+  g.lineWidth = s.width;
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  g.stroke();
+}
+
 /**
  * Trades close together as one marker, so they do not pile up: trades whose candles are at most
  * `gap` candles from the first in their group (on a phone a candle is a few pixels wide, narrower

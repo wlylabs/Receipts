@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { bucket, candleAt, logTicks, range, upTo, type Candle } from '../lib/candles';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { bucket, candleAt, endedUp, logTicks, range, upTo, type Candle } from '../lib/candles';
 import { cx } from '../lib/cx';
 import { paletteOf, shape } from '../lib/chartStyle';
 import { useChartStyle } from '../hooks/useChartStyle';
@@ -64,6 +64,8 @@ export function ReplayChart({
   // the plot's width on screen, so candles never get thinner than MIN_PX
   const plot = useRef<HTMLDivElement>(null);
   const [style] = useChartStyle();
+  // an id safe inside url(#…): React's ids carry colons
+  const washId = `wash${useId().replace(/[^\w-]/g, '')}`;
   const [px, setPx] = useState(0);
   const [tall, setTall] = useState(0);
   useEffect(() => {
@@ -122,18 +124,22 @@ export function ReplayChart({
           {geo.ticks.map((p) => (
             <line key={p} x1="0" x2={VW} y1={geo.y(p)} y2={geo.y(p)} stroke="var(--line)" vectorEffect="non-scaling-stroke" />
           ))}
-          {drawn.map(([ts, o, h, l, c]) => {
-            const up = c >= o;
-            const cx0 = geo.x(ts + step / 2);
-            const top = geo.y(Math.max(o, c));
-            const bottom = geo.y(Math.min(o, c));
-            return (
-              <g key={ts} stroke={up ? palette.up : palette.down} fill={up ? palette.up : palette.down}>
-                <line x1={cx0} x2={cx0} y1={geo.y(h)} y2={geo.y(l)} strokeWidth="1.25" vectorEffect="non-scaling-stroke" />
-                <rect x={cx0 - (slot * 0.7) / 2} y={top} width={Math.max(0.5, slot * 0.7)} height={Math.max(1.5, bottom - top)} stroke="none" />
-              </g>
-            );
-          })}
+          {style.kind === 'line' ? (
+            <LinePath candles={shown} step={step} x={geo.x} y={geo.y} color={endedUp(candles) ? palette.up : palette.down} id={washId} />
+          ) : (
+            drawn.map(([ts, o, h, l, c]) => {
+              const up = c >= o;
+              const cx0 = geo.x(ts + step / 2);
+              const top = geo.y(Math.max(o, c));
+              const bottom = geo.y(Math.min(o, c));
+              return (
+                <g key={ts} stroke={up ? palette.up : palette.down} fill={up ? palette.up : palette.down}>
+                  <line x1={cx0} x2={cx0} y1={geo.y(h)} y2={geo.y(l)} strokeWidth="1.25" vectorEffect="non-scaling-stroke" />
+                  <rect x={cx0 - (slot * 0.7) / 2} y={top} width={Math.max(0.5, slot * 0.7)} height={Math.max(1.5, bottom - top)} stroke="none" />
+                </g>
+              );
+            })
+          )}
         </svg>
 
         {markers
@@ -186,5 +192,25 @@ export function ReplayChart({
         </span>
       </div>
     </div>
+  );
+}
+
+/** The closes as one line, each at its candle's middle, over a wash that fades to the bottom. */
+function LinePath({ candles, step, x, y, color, id }: { candles: readonly Candle[]; step: number; x: (ts: number) => number; y: (p: number) => number; color: string; id: string }) {
+  if (!candles.length) return null;
+  const pts = candles.map(([ts, , , , c]) => `${x(ts + step / 2).toFixed(1)},${y(c).toFixed(1)}`);
+  const first = x(candles[0]![0] + step / 2).toFixed(1);
+  const last = x(candles.at(-1)![0] + step / 2).toFixed(1);
+  return (
+    <>
+      <defs>
+        <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor={color} stopOpacity="0.22" />
+          <stop offset="1" stopColor={color} stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`M${first},${VH - PAD_BOTTOM + 30}L${pts.join('L')}L${last},${VH - PAD_BOTTOM + 30}Z`} fill={`url(#${id})`} stroke="none" />
+      <polyline points={pts.join(' ')} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+    </>
   );
 }

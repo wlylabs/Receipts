@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
 import { AppBar, Wordmark } from '../components/AppBar';
+import { ThemeToggle } from '../components/ThemeToggle';
 import { Omnibox } from '../components/Omnibox';
 import { SampleReceipt } from '../components/SampleReceipt';
 import { RecentList } from '../components/RecentList';
@@ -46,9 +47,12 @@ export default async function HomePage({ searchParams }: Props) {
     <div className="mx-auto max-w-6xl px-4 pb-20 pt-[env(safe-area-inset-top)] sm:px-6">
       <header className="flex h-16 items-center justify-between">
         <Wordmark full />
-        <a href="#how" className="btn btn-ghost h-9 min-h-0 px-3 text-[13px]">
-          How it works
-        </a>
+        <div className="flex items-center gap-1">
+          <a href="#how" className="btn btn-ghost h-9 min-h-0 px-3 text-[13px]">
+            How it works
+          </a>
+          <ThemeToggle className="h-9" />
+        </div>
       </header>
 
       <section className="grid items-center gap-12 pb-16 pt-6 sm:pt-12 lg:min-h-[calc(100dvh-8rem)] lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-16 lg:pt-0" aria-labelledby="hero">

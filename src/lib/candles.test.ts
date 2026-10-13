@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucket, candleAt, mergeMarkers, logTicks, range, stepOf, toCandles, upTo, type Candle, heikinAshi } from './candles';
+import { bucket, candleAt, endedUp, mergeMarkers, logTicks, range, stepOf, toCandles, upTo, type Candle, heikinAshi } from './candles';
 
 const five = (n: number): Candle[] => Array.from({ length: n }, (_, i): Candle => [i * 300, 1 + i, 2 + i, 0.5 + i, 1.5 + i]);
 
@@ -95,5 +95,14 @@ describe('heikinAshi', () => {
       expect(h).toBeGreaterThanOrEqual(Math.max(o, c));
       expect(l).toBeLessThanOrEqual(Math.min(o, c));
     }
+  });
+});
+
+describe('endedUp', () => {
+  it('compares the last close with the first open', () => {
+    const k = (o: number, c: number): Candle => [0, o, Math.max(o, c), Math.min(o, c), c];
+    expect(endedUp([k(1, 0.5), k(0.5, 1.2)])).toBe(true);
+    expect(endedUp([k(1, 2), k(2, 0.9)])).toBe(false);
+    expect(endedUp([])).toBe(true);
   });
 });

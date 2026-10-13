@@ -180,7 +180,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
         </p>
       )}
 
-      <p className="label mt-4 flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">2</span> Candles</p>
+      <p className="label mt-4 flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">2</span> Chart</p>
       <ChartStylePicker inline className="mt-1.5" />
 
       <div className="mt-4 flex flex-wrap items-end gap-2 sm:gap-3">

@@ -37,8 +37,9 @@
   color-scheme: light;
 }
 
+/* dark follows the system unless the toggle picked a side (data-theme on <html>) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --bg: #0c0c0b;
     --surface: #151513;
     --subtle: #1c1c19;
@@ -63,6 +64,32 @@
     --edge: inset 0 1px 0 rgba(255, 255, 255, 0.03);
     color-scheme: dark;
   }
+}
+
+:root[data-theme='dark'] {
+  --bg: #0c0c0b;
+  --surface: #151513;
+  --subtle: #1c1c19;
+  --hover: #23231f;
+  --line: #2a2925;
+  --line-strong: #3a3933;
+  --ink: #f3f1ea;
+  --ink-2: #cfccc2;
+  --muted: #8f8b80;
+  --faint: #5f5c54;
+  --pos: #34d27a;
+  --pos-wash: #0e2117;
+  --neg: #ff5a4f;
+  --neg-wash: #2a1110;
+  --on-ink: #0c0c0b;
+  --accent: #ffd426;
+  --on-accent: #141311;
+  --key: #8a6c00;
+  --key-field: #3a3933;
+  --dot: rgba(243, 241, 234, 0.06);
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 16px 40px -20px rgba(0, 0, 0, 0.9);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  color-scheme: dark;
 }
 
 @theme inline {
