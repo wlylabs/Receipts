@@ -211,6 +211,13 @@ export interface WalletHoldings {
   token: { symbol: string; address: string } | null;
 }
 
+/** GET /api/candles/[pool]: one candle size over one stretch, oldest first. */
+export interface CandlesBody {
+  candles: Candle[];
+  step: number;
+  tf: string;
+}
+
 export interface ApiError {
   error: string;
   code: 'invalid' | 'not-found' | 'no-trades' | 'unsupported' | 'upstream' | 'busy';

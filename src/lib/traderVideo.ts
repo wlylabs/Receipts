@@ -34,7 +34,7 @@ export interface TraderStory {
  * Everything a wallet's replay and its video are drawn from: its trades over the token's whole
  * history, the chart merged down to a readable count, the markers, the numbers and the video.
  */
-export function traderStory(r: TraderReceipts): TraderStory {
+export function traderStory(r: TraderReceipts, opts: { maxCandles?: number } = {}): TraderStory {
   const p = r.position;
   const { token, series } = r;
   const trades: Trade[] = r.trades.map(([ts, side, tokens, u, pr, tx, kind, priced, feeUsd]) => ({ ts, side, tokens, usd: u, priceUsd: pr, tx, trader: r.owner, kind, priced, feeUsd }));
@@ -42,8 +42,8 @@ export function traderStory(r: TraderReceipts): TraderStory {
   // the replay runs from the wallet's first trade to now, over the token's whole history
   const from = Math.max(series[0]?.[0] ?? 0, (trades[0]?.ts ?? 0) - 60);
   const to = Math.max(series.at(-1)?.[0] ?? 0, trades.at(-1)?.ts ?? 0);
-  // every candle since launch, merged down to a count that stays readable on a phone
-  const chart = bucket(r.candles, REPLAY_CANDLES);
+  // every candle given (since launch, or the stretch picked), merged down to a count that stays readable
+  const chart = bucket(r.candles, opts.maxCandles ?? REPLAY_CANDLES);
   // DEX traders read market cap more than price: the supply turns one into the other
   const supply = supplyOf(token);
   const scale = supply || 1;

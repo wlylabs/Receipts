@@ -3,6 +3,7 @@ import { CHAINS } from './chains';
 import { pacer } from './throttle';
 import { bestPair, sameAddress } from './receipts';
 import type { DsPair, GtTrade } from './types';
+import type { Timeframe } from './timeframes';
 
 /**
  * DexScreener says what a token is and where it trades; GeckoTerminal has the pool's candles and
@@ -62,8 +63,6 @@ export async function onOtherChain(address: string): Promise<string | null> {
   return pairs.find((p) => !CHAINS[p.chainId])?.chainId ?? null;
 }
 
-export type Timeframe = { tf: 'minute' | 'hour' | 'day'; agg: number; label: string; sec: number };
-
 /** A candle size that fits the pair's whole life into one page of 1,000 candles. */
 export function timeframeFor(ageSec: number): Timeframe {
   const options: Timeframe[] = [
@@ -77,10 +76,13 @@ export function timeframeFor(ageSec: number): Timeframe {
   return options.find((o) => ageSec / o.sec <= 900) ?? { tf: 'day', agg: 1, label: '1d', sec: 86_400 };
 }
 
-/** The pool's candles in USD per token, as [ts, open, high, low, close, volume], newest first. */
-export async function candles(chain: string, pool: string, token: string, t: Timeframe): Promise<number[][]> {
+/**
+ * The pool's candles in USD per token, as [ts, open, high, low, close, volume], newest first: the
+ * latest `limit`, or those up to `before` (unix seconds).
+ */
+export async function candles(chain: string, pool: string, token: string, t: Timeframe, opts: { limit?: number; before?: number } = {}): Promise<number[][]> {
   const net = CHAINS[chain]!.gt;
-  const q = `aggregate=${t.agg}&limit=1000&currency=usd&token=${token}`;
+  const q = `aggregate=${t.agg}&limit=${opts.limit ?? 1000}&currency=usd&token=${token}${opts.before ? `&before_timestamp=${Math.floor(opts.before)}` : ''}`;
   const body = await gt<{ data?: { attributes?: { ohlcv_list?: number[][] } } }>(`networks/${net}/pools/${pool}/ohlcv/${t.tf}?${q}`);
   return body.data?.attributes?.ohlcv_list ?? [];
 }
