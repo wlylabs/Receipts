@@ -26,6 +26,8 @@ import { TokenImage } from './TokenImage';
 import { TradeList } from './TradeList';
 import { ChartStylePicker } from './ChartStylePicker';
 import { Trail } from './Trail';
+import { FmathPlug } from './FmathPlug';
+import { traderPlug } from '../lib/fmath';
 
 const PLAY_MS = 4_200;
 
@@ -60,6 +62,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     return seen.length ? position(seen, priceAt(series, head, token.priceUsd)).pnl : 0;
   }, [head, trades, series, token.priceUsd, p.pnl]);
   const runTone = toneOf(running);
+  const plug = useMemo(() => traderPlug(token, p), [token, p]);
   const share = async () => {
     const res = await shareLink(`${SITE_URL}${ROUTES.trader(r.owner, token.address)}`, 'Receipts', `Replayed ${short(r.owner)} on $${token.symbol}: ${usd(p.pnl, { signed: true })}. Rank: ${rank.name}.`);
     if (res === 'copied') toast('Link copied.');
@@ -169,6 +172,8 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
               <Loader2 className="size-3.5 animate-spin" aria-hidden /> Printing the receipt… skip
             </button>
           )}
+          {/* the lesson the receipt just taught, and where to work it out before the next trade */}
+          {done && plug && <FmathPlug plug={plug} className="rise mt-3" />}
         </aside>
 
         <div className="min-w-0 lg:col-start-1 lg:row-start-2">

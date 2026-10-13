@@ -25,6 +25,8 @@ import { ReplayChart } from './ReplayChart';
 import { VideoExport, VideoSheet } from './VideoExport';
 import { ChartStylePicker } from './ChartStylePicker';
 import { Trail } from './Trail';
+import { FmathPlug } from './FmathPlug';
+import { tokenPlug } from '../lib/fmath';
 
 /** Wallets shown on each side of the board. */
 const SIDE = 3;
@@ -56,6 +58,7 @@ function TokenPage({ r }: { r: TokenReceipts }) {
   const market = marketOf({ priceUsd: token.priceUsd, athUsd: r.ath.priceUsd, change24h: token.change24h, buys: r.window.buys, sells: r.window.sells });
   const winners = r.board.filter((w) => w.pnl > 0).slice(0, SIDE);
   const losers = r.board.filter((w) => w.pnl < 0).reverse().slice(0, SIDE);
+  const plug = tokenPlug(token);
   const dayTone = token.change24h === null ? null : token.change24h >= 0 ? 'pos' : 'neg';
 
   return (
@@ -146,6 +149,7 @@ function TokenPage({ r }: { r: TokenReceipts }) {
               </div>
             </div>
           )}
+          {plug && <FmathPlug plug={plug} className="m-3" />}
         </aside>
       </div>
 
