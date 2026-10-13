@@ -28,11 +28,11 @@ export function ChartStylePicker({ inline = false, className }: { inline?: boole
   if (inline) return <Rows className={className} />;
   return (
     <div ref={box} className={cx('relative', className)}>
-      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Candle style" title="Candle style" className="grid size-8 place-items-center rounded-full text-muted transition-colors hover:bg-hover hover:text-ink">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-label="Chart style" title="Chart style" className="grid size-8 place-items-center rounded-full text-muted transition-colors hover:bg-hover hover:text-ink">
         <CandlestickChart className="size-4" aria-hidden />
       </button>
       {open && (
-        <div className="panel fade-in absolute right-0 top-full z-20 mt-1.5 w-64 p-3">
+        <div className="panel fade-in absolute right-0 top-full z-20 mt-1.5 w-72 p-3">
           <Rows />
         </div>
       )}
@@ -44,7 +44,7 @@ function Rows({ className }: { className?: string }) {
   const [style, set] = useChartStyle();
   return (
     <div className={cx('space-y-2.5', className)}>
-      <div role="radiogroup" aria-label="Candle shape" className="flex rounded-full bg-subtle p-0.5 text-[12.5px]">
+      <div role="radiogroup" aria-label="Chart type" className="flex rounded-full bg-subtle p-0.5 text-[12.5px]">
         {(Object.keys(KINDS) as ChartStyle['kind'][]).map((k) => (
           <button
             key={k}
@@ -52,7 +52,7 @@ function Rows({ className }: { className?: string }) {
             role="radio"
             aria-checked={style.kind === k}
             onClick={() => set({ kind: k })}
-            className={cx('h-8 flex-1 rounded-full px-2.5 font-medium transition-all', style.kind === k ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-muted hover:text-ink')}
+            className={cx('h-8 flex-1 whitespace-nowrap rounded-full px-2.5 font-medium transition-all', style.kind === k ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-muted hover:text-ink')}
           >
             {KINDS[k]}
           </button>

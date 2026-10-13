@@ -34,7 +34,7 @@ export interface TraderStory {
  * Everything a wallet's replay and its video are drawn from: its trades over the token's whole
  * history, the chart merged down to a readable count, the markers, the numbers and the video.
  */
-export function traderStory(r: TraderReceipts): TraderStory {
+export function traderStory(r: TraderReceipts, opts: { maxCandles?: number } = {}): TraderStory {
   const p = r.position;
   const { token, series } = r;
   const trades: Trade[] = r.trades.map(([ts, side, tokens, u, pr, tx, kind, priced, feeUsd]) => ({ ts, side, tokens, usd: u, priceUsd: pr, tx, trader: r.owner, kind, priced, feeUsd }));
@@ -42,8 +42,8 @@ export function traderStory(r: TraderReceipts): TraderStory {
   // the replay runs from the wallet's first trade to now, over the token's whole history
   const from = Math.max(series[0]?.[0] ?? 0, (trades[0]?.ts ?? 0) - 60);
   const to = Math.max(series.at(-1)?.[0] ?? 0, trades.at(-1)?.ts ?? 0);
-  // every candle since launch, merged down to a count that stays readable on a phone
-  const chart = bucket(r.candles, REPLAY_CANDLES);
+  // every candle given (since launch, or the stretch picked), merged down to a count that stays readable
+  const chart = bucket(r.candles, opts.maxCandles ?? REPLAY_CANDLES);
   // DEX traders read market cap more than price: the supply turns one into the other
   const supply = supplyOf(token);
   const scale = supply || 1;
@@ -72,7 +72,7 @@ export function traderStory(r: TraderReceipts): TraderStory {
     ...(r.of > 1 ? [{ k: 'vs traders', v: `#${r.place} of ${r.of}` }] : []),
   ];
 
-  // one marker per candle, so trades close together do not pile up
+  // one marker per candle and side, like OKX's chart
   const markers = mergeMarkers(
     swaps.map((t) => ({ ts: t.ts, price: t.priceUsd, kind: t.side })),
     chart.candles,
@@ -119,15 +119,16 @@ const times = (x: number) => `${x.toFixed(x >= 10 ? 0 : 1)}×`;
 
 /**
  * What each sell made over what its tokens cost (the average buy so far, as the position works it
- * out), summed per marker: a marker stands for every trade from it to the next.
+ * out), summed per marker: a sell marker stands for every sell from it to the next.
  */
 function sellPops(trades: readonly Trade[], markers: readonly Marker[]): Pop[] {
   const sums = new Map<Marker, { made: number; cost: number }>();
   trades.forEach((t, i) => {
     if (t.side !== 'sell') return;
+    // the sell marker this sell was merged into: buys and sells have markers of their own
     let m: Marker | undefined;
-    for (const k of markers) if (k.ts <= t.ts) m = k;
-    if (!m || m.kind !== 'sell') return;
+    for (const k of markers) if (k.kind === 'sell' && k.ts <= t.ts) m = k;
+    if (!m) return;
     const made = position(trades.slice(0, i + 1), t.priceUsd).realized - position(trades.slice(0, i), t.priceUsd).realized;
     const sum = sums.get(m) ?? { made: 0, cost: 0 };
     sum.made += made;
@@ -140,14 +141,14 @@ function sellPops(trades: readonly Trade[], markers: readonly Marker[]): Pop[] {
   });
 }
 
-/** What each buy put in, summed per marker, for the long cut: a marker stands for every trade from it to the next. */
+/** What each buy put in, summed per marker, for the long cut: a buy marker stands for every buy from it to the next. */
 function buyNotes(trades: readonly Trade[], markers: readonly Marker[]): Pop[] {
   const sums = new Map<Marker, number>();
   for (const t of trades) {
     if (t.side !== 'buy' || t.kind === 'transfer') continue;
     let m: Marker | undefined;
-    for (const k of markers) if (k.ts <= t.ts) m = k;
-    if (!m || m.kind !== 'buy') continue;
+    for (const k of markers) if (k.kind === 'buy' && k.ts <= t.ts) m = k;
+    if (!m) continue;
     sums.set(m, (sums.get(m) ?? 0) + t.usd);
   }
   return [...sums].map(([m, put]) => ({ ts: m.ts, price: m.price, text: `${usd(put)} in`, tone: null }));

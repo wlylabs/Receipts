@@ -1,8 +1,8 @@
 import type { Marker } from '../components/ReplayChart';
 import { renderSound, SAMPLE_RATE, tickStep, type Cue } from './videoSound';
-import { X_LIGHT } from './palette';
+import { NIGHT, X_LIGHT, type VideoTheme } from './palette';
 import { DEFAULT_STYLE, paletteOf, shape, type ChartStyle } from './chartStyle';
-import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './candles';
+import { candleAt, drawCandles, drawLine, endedUp, logTicks, range, upTo, type Candle } from './candles';
 
 /**
  * A video of one replay, drawn on a canvas and encoded in the browser: MP4 (H.264 + AAC) through
@@ -152,6 +152,8 @@ export interface ReplayVideo {
   paced?: boolean;
   /** How the candles are drawn; plain green and red candles when left out. */
   candleStyle?: ChartStyle;
+  /** Light like X's timeline or dark like DexScreener's night chart; light when left out. */
+  theme?: VideoTheme;
   /** Formats an axis value (already scaled). */
   label: (n: number) => string;
   date: (ts: number) => string;
@@ -166,7 +168,15 @@ export interface Outro {
   stamp?: { text: string; tone: 'pos' | 'neg' | null };
 }
 
-const { bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = X_LIGHT;
+// the frame's colours, set from the video's theme at the top of every frame
+let { bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = X_LIGHT as { [K in keyof typeof X_LIGHT]: string };
+
+/** Text on a filled tag or pill: white on green and red, the background's colour on the ink (light in the dark theme). */
+const onFill = (fill: string) => (fill === INK ? BG : '#ffffff');
+
+function setPalette(theme: VideoTheme | undefined) {
+  ({ bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = theme === 'dark' ? NIGHT : X_LIGHT);
+}
 const SANS = "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, Menlo, monospace";
 
@@ -412,6 +422,7 @@ function geometry(v: ReplayVideo, L: Layout, view: View = fullView(v)) {
 /** One frame at `time` seconds. */
 export function drawFrame(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f: VideoFormat, l: VideoLength = 'short') {
   g.globalAlpha = 1;
+  setPalette(v.theme);
   drawScene(g, time, v, f, l, 1);
   g.globalAlpha = 1;
 }
@@ -500,7 +511,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.beginPath();
     g.roundRect(axisX - 8, geo.Y(p) - h / 2, w, h, 8);
     g.fill();
-    g.fillStyle = '#ffffff';
+    g.fillStyle = onFill(fill);
     g.textAlign = 'left';
     g.fillText(text, axisX + 3, geo.Y(p) + 9 * big);
   };
@@ -539,7 +550,9 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.translate(-fx, -fy);
   }
   const style = v.candleStyle ?? DEFAULT_STYLE;
-  drawCandles(g, shape(shown, style.kind), v.step, geo.X, geo.Y, { up: paletteOf(style).videoUp, down: paletteOf(style).videoDown, body: 0.68 });
+  const colors = paletteOf(style);
+  if (style.kind === 'line') drawLine(g, shown, v.step, geo.X, geo.Y, { color: endedUp(v.candles) ? colors.videoUp : colors.videoDown, width: 5 * big, floor: y1 });
+  else drawCandles(g, shape(shown, style.kind), v.step, geo.X, geo.Y, { up: colors.videoUp, down: colors.videoDown, body: 0.68 });
 
   // trades pop as the playhead reaches them, buys under their candle and sells over it
   if (playing) {
@@ -549,7 +562,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
       const c = candleAt(v.candles, v.step, m.ts);
       const buy = m.kind === 'buy';
       const py = buy ? geo.Y(Math.min(c?.[3] ?? m.price, m.price)) : geo.Y(Math.max(c?.[2] ?? m.price, m.price));
-      drawMarker(g, geo.X(c ? c[0] + v.step / 2 : m.ts), py, m, k, big);
+      drawMarker(g, geo.X(c ? c[0] + v.step / 2 : m.ts), py, m, k, big, x0, px1);
     }
   }
   g.restore();
@@ -591,6 +604,8 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
 /** The closing receipt: paper sliding up over a dimmed chart, line by line, then the stamp. */
 function drawOutro(g: CanvasRenderingContext2D, L: Layout, v: ReplayVideo, o: Outro, t: number, alpha: number) {
   const { W, H } = L;
+  // the receipt is paper in either theme, so it prints in the light inks
+  const { ink: INK, muted: MUTED } = X_LIGHT;
   const s = Math.min(W, H) / 1080;
   const w = Math.min(W - L.pad * 2, 820 * s);
   const lh = 50 * s;
@@ -673,7 +688,7 @@ function drawOutro(g: CanvasRenderingContext2D, L: Layout, v: ReplayVideo, o: Ou
   g.fillText(o.total?.k.toUpperCase() ?? 'TOTAL P&L', ix, cy);
   const total = o.total?.v ?? v.money(v.pnl);
   g.textAlign = 'right';
-  g.fillStyle = o.total ? (o.total.tone === 'pos' ? POS : o.total.tone === 'neg' ? NEG : INK) : toneColor(v.pnl);
+  g.fillStyle = o.total ? (o.total.tone === 'pos' ? POS : o.total.tone === 'neg' ? NEG : INK) : v.pnl > 1e-9 ? POS : v.pnl < -1e-9 ? NEG : INK;
   fit(g, total, Math.round(92 * s), 750, w - 112 * s);
   cy += 100 * s;
   g.fillText(total, ox, cy);
@@ -738,13 +753,17 @@ function drawPill(g: CanvasRenderingContext2D, x: number, y: number, text: strin
   g.beginPath();
   g.roundRect(x, y - h * 0.72, w, h, h / 2);
   g.fill();
-  g.fillStyle = '#ffffff';
+  g.fillStyle = onFill(color);
   g.textAlign = 'left';
   g.fillText(text, x + size * 0.55, y + size * 0.05);
 }
 
-/** A trade on its candle: an arrow and a pill, under the candle for a buy and over it for a sell. */
-function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker, k: number, scale: number) {
+/**
+ * A trade on its candle: an arrow and a pill, under the candle for a buy and over it for a sell.
+ * The arrow stays on the candle; the pill slides in to stay between `lo` and `hi`, the chart's
+ * edges, so a marker on the newest candle isn't cut off.
+ */
+function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker, k: number, scale: number, lo: number, hi: number) {
   if (k <= 0) return;
   const buy = m.kind === 'buy';
   const dir = buy ? 1 : -1;
@@ -762,12 +781,15 @@ function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker
   font(g, 24, 700);
   const w = g.measureText(text).width + 26;
   const top = buy ? 24 : -24 - 40;
+  // how far the pill shifts, in its own units, to stay inside the chart
+  const z = k * scale;
+  const shift = (Math.max(lo - (x - (w / 2) * z), 0) + Math.min(hi - (x + (w / 2) * z), 0)) / z;
   g.beginPath();
-  g.roundRect(-w / 2, top, w, 40, 10);
+  g.roundRect(shift - w / 2, top, w, 40, 10);
   g.fill();
   g.fillStyle = '#ffffff';
   g.textAlign = 'center';
-  g.fillText(text, 0, top + 29);
+  g.fillText(text, shift, top + 29);
   g.restore();
 }
 

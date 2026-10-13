@@ -1,8 +1,12 @@
 import { heikinAshi, type Candle } from './candles';
 
-/** How the candles are drawn: their shape and their colours. Money stays green and red either way. */
+/**
+ * How the chart is drawn: candles, Heikin Ashi or a line through the closes, and the colours (a
+ * line takes the buy colour when the run ended up, the sell colour when down). Money stays green
+ * and red either way.
+ */
 export interface ChartStyle {
-  kind: 'candles' | 'heikin-ashi';
+  kind: 'candles' | 'heikin-ashi' | 'line';
   colors: CandleColors | 'custom';
   /** The buy and sell candle colours picked by hand, used when `colors` is 'custom'. */
   up: string;
@@ -25,7 +29,7 @@ export const COLORS: Record<CandleColors, { label: string; up: string; down: str
   ocean: { label: 'Blue / orange', up: '#2f80ed', down: '#f2994a', videoUp: '#2f80ed', videoDown: '#f2994a' },
 };
 
-export const KINDS: Record<ChartStyle['kind'], string> = { candles: 'Candles', 'heikin-ashi': 'Heikin Ashi' };
+export const KINDS: Record<ChartStyle['kind'], string> = { candles: 'Candles', 'heikin-ashi': 'Heikin Ashi', line: 'Line' };
 
 const hex = (c: unknown, or: string) => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c.toLowerCase() : or);
 
@@ -46,5 +50,5 @@ export function paletteOf(style: ChartStyle): { up: string; down: string; videoU
   return COLORS[style.colors];
 }
 
-/** The candles as the style draws them. */
+/** The candles as the style draws them; a line runs through the real closes. */
 export const shape = (candles: readonly Candle[], kind: ChartStyle['kind']): readonly Candle[] => (kind === 'heikin-ashi' ? heikinAshi(candles) : candles);

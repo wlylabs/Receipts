@@ -207,12 +207,15 @@ export interface WalletHoldings {
   kind: 'wallet';
   owner: string;
   holdings: Holding[];
+  /** The address is itself a token's CA (it has a DEX pair), so it was most likely pasted as the wrong kind. */
+  token: { symbol: string; address: string } | null;
 }
 
-/** GET /api/resolve/[address] */
-export interface Resolved {
-  kind: 'token' | 'wallet';
-  address: string;
+/** GET /api/candles/[pool]: one candle size over one stretch, oldest first. */
+export interface CandlesBody {
+  candles: Candle[];
+  step: number;
+  tf: string;
 }
 
 export interface ApiError {

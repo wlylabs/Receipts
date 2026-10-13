@@ -1,6 +1,6 @@
 import { holdings as solanaHoldings } from '../../../../lib/solana';
 import { historyChains, holdings as evmHoldings } from '../../../../lib/evm';
-import { pairsFor } from '../../../../lib/upstream';
+import { findPair, pairsFor } from '../../../../lib/upstream';
 import { CHAINS } from '../../../../lib/chains';
 import { bestPair, isWallet, sameAddress, toTokenInfo } from '../../../../lib/receipts';
 import { fail, ok, tooMany } from '../../../../lib/respond';
@@ -15,6 +15,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ address: string
   if (limited) return limited;
   const { address } = await ctx.params;
   if (!isWallet(address)) return fail('invalid', 'That is not a wallet address.');
+  // asked alongside the holdings: is this address a token's CA rather than a wallet?
+  const asToken = findPair(address).catch(() => null);
   try {
     const held: { chain: string; address: string; amount: number }[] = address.startsWith('0x')
       ? (
@@ -40,7 +42,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ address: string
         out.push({ token, amount: h.amount, valueUsd: h.amount * token.priceUsd });
       }
     }
-    const body: WalletHoldings = { kind: 'wallet', owner: address, holdings: out.sort((a, b) => b.valueUsd - a.valueUsd) };
+    const found = await asToken;
+    const token = found ? { symbol: found.pair.baseToken.symbol, address: found.tokenAddress } : null;
+    const body: WalletHoldings = { kind: 'wallet', owner: address, holdings: out.sort((a, b) => b.valueUsd - a.valueUsd), token };
     return ok(body);
   } catch (e) {
     console.error('wallet holdings', address, e);

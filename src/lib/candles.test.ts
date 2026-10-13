@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucket, candleAt, mergeMarkers, logTicks, range, stepOf, toCandles, upTo, type Candle, heikinAshi } from './candles';
+import { bucket, candleAt, endedUp, mergeMarkers, logTicks, range, stepOf, toCandles, upTo, type Candle, heikinAshi } from './candles';
 
 const five = (n: number): Candle[] => Array.from({ length: n }, (_, i): Candle => [i * 300, 1 + i, 2 + i, 0.5 + i, 1.5 + i]);
 
@@ -9,6 +9,10 @@ describe('candles', () => {
       [300, 1, 1, 1, 1],
       [600, 1, 2, 0.5, 1.5],
     ]);
+  });
+
+  it('keeps one candle per time when the feed repeats one', () => {
+    expect(toCandles([[300, 1, 2, 1, 2, 0], [300, 1, 2, 1, 2, 0], [0, 1, 1, 1, 1, 0]]).map((c) => c[0])).toEqual([0, 300]);
   });
 
   it('finds the candle size from the usual gap', () => {
@@ -48,31 +52,29 @@ describe('candles', () => {
     }
   });
 
-  it('merges trades in one candle, or close by, into one marker', () => {
+  it('marks each candle once per side, the buy under it and the sell over it', () => {
     const k = five(3);
-    const merged = mergeMarkers(
-      [
-        { ts: 10, price: 1.2, kind: 'buy' },
-        { ts: 100, price: 1.1, kind: 'buy' },
-        { ts: 350, price: 2, kind: 'buy' },
-        { ts: 400, price: 2.5, kind: 'sell' },
-        { ts: 700, price: 3, kind: 'sell' },
-      ],
-      k,
-      300,
-      0,
-    );
-    expect(merged).toEqual([
+    const t = (ts: number, kind: 'buy' | 'sell', price = 1) => ({ ts, price, kind });
+    expect(mergeMarkers([t(10, 'buy', 1.2), t(20, 'sell', 2), t(30, 'buy', 1.1), t(40, 'sell', 3), t(350, 'buy', 2), t(700, 'sell')], k, 300)).toEqual([
       { ts: 10, price: 1.1, kind: 'buy' },
-      { ts: 350, price: 2.5, kind: 'sell', label: 'B/S' },
-      { ts: 700, price: 3, kind: 'sell' },
+      { ts: 20, price: 3, kind: 'sell' },
+      { ts: 350, price: 2, kind: 'buy' },
+      { ts: 700, price: 1, kind: 'sell' },
     ]);
   });
 
-  it('merges trades a few candles apart too', () => {
+  it('shows trades apart on finer candles and together on coarser ones', () => {
+    // five buys a minute apart: five markers on 1-minute candles, one on a 5-minute candle
+    const buys = [0, 60, 120, 180, 240].map((ts) => ({ ts, price: 1, kind: 'buy' as const }));
+    const minute: Candle[] = buys.map(({ ts }) => [ts, 1, 1, 1, 1]);
+    expect(mergeMarkers(buys, minute, 60)).toHaveLength(5);
+    expect(mergeMarkers(buys, [[0, 1, 1, 1, 1]], 300)).toHaveLength(1);
+  });
+
+  it('can take in trades a few candles on too', () => {
     const k = five(10);
     const m = (ts: number) => ({ ts, price: 1, kind: 'buy' as const });
-    expect(mergeMarkers([m(0), m(600), m(900), m(2400)], k, 300)).toHaveLength(2);
+    expect(mergeMarkers([m(0), m(600), m(900), m(2400)], k, 300, 3)).toHaveLength(2);
   });
 });
 
@@ -95,5 +97,14 @@ describe('heikinAshi', () => {
       expect(h).toBeGreaterThanOrEqual(Math.max(o, c));
       expect(l).toBeLessThanOrEqual(Math.min(o, c));
     }
+  });
+});
+
+describe('endedUp', () => {
+  it('compares the last close with the first open', () => {
+    const k = (o: number, c: number): Candle => [0, o, Math.max(o, c), Math.min(o, c), c];
+    expect(endedUp([k(1, 0.5), k(0.5, 1.2)])).toBe(true);
+    expect(endedUp([k(1, 2), k(2, 0.9)])).toBe(false);
+    expect(endedUp([])).toBe(true);
   });
 });

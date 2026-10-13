@@ -14,7 +14,7 @@ import { marketOf } from '../lib/market';
 import { traderStory } from '../lib/traderVideo';
 import { marketStory } from '../lib/marketVideo';
 import type { ReplayVideo } from '../lib/replayVideo';
-import { supplyOf } from '../lib/receipts';
+import { isWallet, supplyOf } from '../lib/receipts';
 import { ROUTES } from '../lib/site';
 import { copyText } from '../lib/clipboard';
 import { toast } from '../lib/toast';
@@ -25,6 +25,8 @@ import { ReplayChart } from './ReplayChart';
 import { VideoExport, VideoSheet } from './VideoExport';
 import { ChartStylePicker } from './ChartStylePicker';
 import { Trail } from './Trail';
+import { ReferralPlug } from './ReferralPlug';
+import { tokenPlug } from '../lib/referral';
 
 /** Wallets shown on each side of the board. */
 const SIDE = 3;
@@ -38,7 +40,7 @@ export function TokenView({ ca }: { ca: string }) {
   }, [data, setRecent]);
 
   if (state.status === 'loading') return <Loading what={`Reading ${short(ca)}’s chart and latest trades…`} />;
-  if (state.status === 'error') return <Failure error={state.error} onRetry={reload} />;
+  if (state.status === 'error') return <Failure error={state.error} onRetry={reload} other={isWallet(ca) && state.error.code === 'not-found' ? { label: 'Open it as a wallet', href: ROUTES.wallet(ca) } : undefined} />;
   return <TokenPage r={state.data} />;
 }
 
@@ -56,6 +58,7 @@ function TokenPage({ r }: { r: TokenReceipts }) {
   const market = marketOf({ priceUsd: token.priceUsd, athUsd: r.ath.priceUsd, change24h: token.change24h, buys: r.window.buys, sells: r.window.sells });
   const winners = r.board.filter((w) => w.pnl > 0).slice(0, SIDE);
   const losers = r.board.filter((w) => w.pnl < 0).reverse().slice(0, SIDE);
+  const plug = tokenPlug(token);
   const dayTone = token.change24h === null ? null : token.change24h >= 0 ? 'pos' : 'neg';
 
   return (
@@ -146,6 +149,7 @@ function TokenPage({ r }: { r: TokenReceipts }) {
               </div>
             </div>
           )}
+          {plug && <ReferralPlug plug={plug} className="m-3" />}
         </aside>
       </div>
 

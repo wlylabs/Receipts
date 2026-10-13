@@ -5,10 +5,10 @@ export type Candle = [number, number, number, number, number];
 
 /** Candles from GeckoTerminal's [ts, open, high, low, close, volume] rows, oldest first. */
 export function toCandles(ohlcv: readonly number[][]): Candle[] {
-  return ohlcv
-    .filter((c) => c.length >= 5 && c[1]! > 0 && c[2]! > 0 && c[3]! > 0 && c[4]! > 0)
-    .map((c): Candle => [c[0]!, c[1]!, c[2]!, c[3]!, c[4]!])
-    .sort((a, b) => a[0] - b[0]);
+  // GeckoTerminal sometimes sends a candle twice at the edge of a page: keep one per time
+  const byTs = new Map<number, Candle>();
+  for (const c of ohlcv) if (c.length >= 5 && c[1]! > 0 && c[2]! > 0 && c[3]! > 0 && c[4]! > 0) byTs.set(c[0]!, [c[0]!, c[1]!, c[2]!, c[3]!, c[4]!]);
+  return [...byTs.values()].sort((a, b) => a[0] - b[0]);
 }
 
 /** The candle size in seconds: the most common gap between candles. */
@@ -140,36 +140,69 @@ export function drawCandles(g: CanvasRenderingContext2D, candles: readonly Candl
   g.globalAlpha = prev;
 }
 
+/** Whether a run of candles ended up from where it opened, which colours a line chart. */
+export function endedUp(candles: readonly Candle[]): boolean {
+  return candles.length < 1 || candles.at(-1)![4] >= candles[0]![1];
+}
+
 /**
- * Trades close together as one marker, so they do not pile up: trades whose candles are at most
- * `gap` candles from the first in their group (on a phone a candle is a few pixels wide, narrower
- * than a marker). A group of one kind is one B or S; one with both is "B/S", coloured by its last
- * trade. It sits at the first trade's time (so it pops when the replay reaches it) and at the
- * lowest buy or the highest sell.
+ * Candles as a line through their closes on a canvas, each at its candle's middle, with a wash
+ * under it fading down to `floor` (the plot's bottom edge, in pixels).
  */
-export function mergeMarkers(markers: readonly Marker[], candles: readonly Candle[], step: number, gap = 3): Marker[] {
-  const groups: { at: number; list: Marker[] }[] = [];
+export function drawLine(g: CanvasRenderingContext2D, candles: readonly Candle[], step: number, X: (ts: number) => number, Y: (p: number) => number, s: { color: string; width: number; floor: number }) {
+  if (!candles.length) return;
+  const pts = candles.map(([ts, , , , c]) => [X(ts + step / 2), Y(c)] as const);
+  g.beginPath();
+  pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.save();
+  g.lineTo(pts.at(-1)![0], s.floor);
+  g.lineTo(pts[0]![0], s.floor);
+  g.closePath();
+  const top = Math.min(...pts.map(([, y]) => y));
+  const wash = g.createLinearGradient(0, top, 0, s.floor);
+  wash.addColorStop(0, s.color);
+  wash.addColorStop(1, 'transparent');
+  g.globalAlpha *= 0.22;
+  g.fillStyle = wash;
+  g.fill();
+  g.restore();
+  g.beginPath();
+  pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.strokeStyle = s.color;
+  g.lineWidth = s.width;
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  g.stroke();
+}
+
+/**
+ * One marker per candle and side, the way OKX's wallet chart marks trades: every buy in a candle is
+ * one B under it, every sell one S over it, so the two never collide even inside one candle. A
+ * coarser chart folds more trades into each marker; a finer one shows them apart, so the markers
+ * always match the candles on screen. Trades up to `gap` candles after a group's first join it too.
+ * A marker sits at its first trade's time (so it pops when the replay reaches it), at the lowest
+ * buy or the highest sell.
+ */
+export function mergeMarkers(markers: readonly Marker[], candles: readonly Candle[], step: number, gap = 0): Marker[] {
   const index = (ts: number) => {
     const k = candleAt(candles, step, ts);
-    return k ? candles.indexOf(k) : Math.round(ts / Math.max(1, step));
+    return k ? candles.indexOf(k) : Math.floor(ts / Math.max(1, step));
   };
-  for (const m of [...markers].sort((a, b) => a.ts - b.ts)) {
-    const i = index(m.ts);
-    const g = groups.at(-1);
-    if (g && i - g.at <= gap) g.list.push(m);
-    else groups.push({ at: i, list: [m] });
+  const out: Marker[] = [];
+  for (const kind of ['buy', 'sell'] as const) {
+    const groups: { at: number; list: Marker[] }[] = [];
+    for (const m of markers.filter((x) => x.kind === kind).sort((a, b) => a.ts - b.ts)) {
+      const i = index(m.ts);
+      const g = groups.at(-1);
+      if (g && i - g.at <= gap) g.list.push(m);
+      else groups.push({ at: i, list: [m] });
+    }
+    for (const { list } of groups) {
+      const prices = list.map((m) => m.price);
+      out.push({ ts: list[0]!.ts, price: kind === 'buy' ? Math.min(...prices) : Math.max(...prices), kind });
+    }
   }
-  return groups.map(({ list }) => {
-    const last = list.at(-1)!;
-    const mixed = list.some((m) => m.kind !== list[0]!.kind);
-    const same = list.filter((m) => m.kind === last.kind).map((m) => m.price);
-    return {
-      ts: list[0]!.ts,
-      price: last.kind === 'buy' ? Math.min(...same) : Math.max(...same),
-      kind: last.kind,
-      ...(mixed ? { label: 'B/S' } : {}),
-    };
-  });
+  return out.sort((a, b) => a.ts - b.ts || (a.kind === 'buy' ? -1 : 1));
 }
 
 /**

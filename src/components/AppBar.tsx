@@ -6,6 +6,7 @@ import { History } from 'lucide-react';
 import { Logo } from './Logo';
 import { Omnibox } from './Omnibox';
 import { RecentList } from './RecentList';
+import { ThemeToggle } from './ThemeToggle';
 import { cx } from '../lib/cx';
 
 /** The bar over every result: home, the paste box for the next address, and what was looked up last. */
@@ -17,7 +18,10 @@ export function AppBar() {
         <div className="min-w-0 flex-1 sm:max-w-md md:mx-auto">
           <Omnibox size="sm" />
         </div>
-        <RecentMenu />
+        <div className="flex shrink-0 items-center">
+          <ThemeToggle />
+          <RecentMenu />
+        </div>
       </div>
     </header>
   );
