@@ -97,6 +97,11 @@ export function recommendLength(v: Pick<ReplayVideo, 'from' | 'to' | 'markers' |
   return { length: 'story', reason: `${what[0]!.toUpperCase()}${what.slice(1)}: the story cut has time to caption each one.` };
 }
 
+/** The size that suits a cut: a quick clip plays in the X feed, a longer one full screen on phones. */
+export function recommendFormat(l: VideoLength): { format: VideoFormat; reason: string } {
+  return l === 'short' ? { format: 'square', reason: 'Short clips play best in the X feed.' } : { format: 'portrait', reason: 'Full screen on TikTok, Reels and Shorts.' };
+}
+
 export const FPS = 30;
 
 export interface Caption {

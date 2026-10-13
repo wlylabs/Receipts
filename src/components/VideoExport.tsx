@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clapperboard, Download, Loader2, Play, Volume2, VolumeX } from 'lucide-react';
-import { drawFrame, FORMATS, LENGTHS, recommendLength, soundCues, timingOf, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
+import { drawFrame, FORMATS, LENGTHS, recommendFormat, recommendLength, soundCues, timingOf, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
 import { saveFile } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
@@ -40,10 +40,14 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
   // the video draws its candles the way the page's charts do
   const [style] = useChartStyle();
   const video = useMemo(() => ({ ...run, candleStyle: style }), [run, style]);
-  const [format, setFormat] = useState<VideoFormat>('square');
   // the cut that suits this run is picked to start with, and marked
   const pick = useMemo(() => recommendLength(run), [run]);
   const [length, setLength] = useState<VideoLength>(pick.length);
+  // the size follows the length's best fit until people pick one themselves
+  const fit = recommendFormat(length);
+  const [chosen, setChosen] = useState<VideoFormat | null>(null);
+  const format = chosen ?? fit.format;
+  const setFormat = setChosen;
   const [sound, setSound] = useState(true);
   const [progress, setProgress] = useState<number | null>(null);
   const [restart, setRestart] = useState(0);
@@ -164,10 +168,17 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
                 {FORMATS[f].label} <span className="num font-normal text-muted">{FORMATS[f].ratio}</span>
               </span>
               <span className="text-[11.5px] leading-tight text-muted">{FORMATS[f].hint}</span>
+              {f === fit.format && <span className="mono rounded bg-accent px-1 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap text-on-accent">Best fit</span>}
             </button>
           );
         })}
       </div>
+
+      {format !== fit.format && (
+        <p className="mt-1.5 text-[12px] leading-snug text-muted">
+          Best fit for {LENGTHS[length].label}: {FORMATS[fit.format].label} {FORMATS[fit.format].ratio}. {fit.reason}
+        </p>
+      )}
 
       <p className="label mt-4 flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">2</span> Candles</p>
       <ChartStylePicker inline className="mt-1.5" />

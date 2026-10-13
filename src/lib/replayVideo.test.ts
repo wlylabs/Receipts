@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LENGTHS, playAt, recommendLength, soundCues, timeOf, timingOf, zoomAt, type ReplayVideo } from './replayVideo';
+import { LENGTHS, playAt, recommendFormat, recommendLength, soundCues, timeOf, timingOf, zoomAt, type ReplayVideo } from './replayVideo';
 import type { Candle } from './candles';
 
 describe('replay video timing', () => {
@@ -153,5 +153,13 @@ describe('recommended length', () => {
     expect(recommendLength(market(4)).length).toBe('story');
     expect(recommendLength(market(8)).length).toBe('long');
     expect(recommendLength(market(8)).reason).toMatch(/^8 moments/);
+  });
+});
+
+describe('recommended size', () => {
+  it('puts a short clip in the feed and a longer one full screen', () => {
+    expect(recommendFormat('short').format).toBe('square');
+    expect(recommendFormat('story').format).toBe('portrait');
+    expect(recommendFormat('long').format).toBe('portrait');
   });
 });
