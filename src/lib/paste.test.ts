@@ -18,7 +18,7 @@ describe('routeFor', () => {
   });
 
   it('says what to paste when there is nothing usable', () => {
-    expect(routeFor('token', '  ')).toEqual({ error: 'Paste a token’s contract address.' });
+    expect(routeFor('token', '  ')).toEqual({ error: 'Drop a coin’s contract address (CA).' });
     expect(routeFor('wallet', 'hello')).toHaveProperty('error');
   });
 });

@@ -2,7 +2,7 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ClipboardPaste, X } from 'lucide-react';
+import { ArrowRight, ClipboardPaste, Coins, Eye, X } from 'lucide-react';
 import { cleanAddress } from '../lib/receipts';
 import { MODES, routeFor, type PasteMode } from '../lib/paste';
 import { readClipboard } from '../lib/clipboard';
@@ -74,7 +74,10 @@ export function Omnibox({ size = 'lg', onGo }: { size?: 'lg' | 'sm'; onGo?: () =
               onClick={() => pick(k)}
               className={cx('h-8 rounded-full px-4 font-medium transition-all duration-200', mode === k ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.12),inset_0_0_0_1px_var(--line)]' : 'text-muted hover:text-ink')}
             >
-              {MODES[k].tab}
+              <span className="flex items-center gap-1.5">
+                {k === 'token' ? <Coins className="size-3.5" aria-hidden /> : <Eye className="size-3.5" aria-hidden />}
+                {MODES[k].tab}
+              </span>
             </button>
           ))}
         </div>
@@ -89,8 +92,8 @@ export function Omnibox({ size = 'lg', onGo }: { size?: 'lg' | 'sm'; onGo?: () =
             type="button"
             onClick={() => pick(mode === 'wallet' ? 'token' : 'wallet')}
             className="chip h-7 shrink-0 cursor-pointer font-semibold text-ink hover:border-line-strong"
-            aria-label={`Pasting a ${m.tab.toLowerCase()}. Switch to ${mode === 'wallet' ? 'token CA' : 'wallet'}`}
-            title={`Switch to ${mode === 'wallet' ? 'Token CA' : 'Wallet'}`}
+            aria-label={`${m.tab}. Switch to ${MODES[mode === 'wallet' ? 'token' : 'wallet'].tab.toLowerCase()}`}
+            title={`Switch to ${MODES[mode === 'wallet' ? 'token' : 'wallet'].tab.toLowerCase()}`}
           >
             {m.short}
           </button>
