@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Activity, ArrowUpRight, ChevronRight, Clapperboard, Copy, CopyCheck, Loader2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, ArrowUpRight, ChevronRight, Clapperboard, Copy, Loader2, TrendingDown, TrendingUp } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { KEYS, type Recent } from '../lib/game';
@@ -193,11 +193,6 @@ function Side({ title, tone, rows, empty, token }: { title: string; tone: 'pos' 
           {tone === 'pos' ? <TrendingUp className="size-3.5" aria-hidden /> : <TrendingDown className="size-3.5" aria-hidden />}
           {title}
         </h3>
-        {rows.length > 1 && (
-          <button type="button" onClick={() => copy(rows.map((r) => r.trader).join('\n'), `${rows.length} addresses`)} className="btn btn-ghost -my-1 h-7 min-h-0 px-2 text-[12px]">
-            <CopyCheck className="size-3.5" aria-hidden /> Copy all
-          </button>
-        )}
       </div>
       {rows.length === 0 ? (
         <p className="px-4 py-5 text-[13px] text-muted">{empty}</p>
