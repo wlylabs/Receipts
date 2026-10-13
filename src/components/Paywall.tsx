@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Wallet } from '@wallet-standard/base';
 import { Check, Loader2, Smartphone } from 'lucide-react';
 import { accountOf, signAndSend, solanaWallets } from '../lib/wallets';
+import { isPaid, remember } from '../lib/paidDownloads';
 import { cx } from '../lib/cx';
 import type { ApiError, PayQuote } from '../lib/types';
 
@@ -22,7 +23,7 @@ const mobile = () => typeof navigator !== 'undefined' && /Android|iPhone|iPad|iP
  * One download's price, paid from a Solana wallet in this browser, or by scanning the Solana Pay
  * code with a phone. It watches the chain for the payment and calls `onPaid` once it lands.
  */
-export function Paywall({ priceUsd, onPaid, onCancel }: { priceUsd: number; onPaid: () => void; onCancel: () => void }) {
+export function Paywall({ priceUsd, onPaid, onCancel }: { priceUsd: number; onPaid: (token: string) => void; onCancel: () => void }) {
   const [coin, setCoin] = useState<Coin>('USDC');
   const [q, setQuote] = useState<PayQuote | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,6 +48,7 @@ export function Paywall({ priceUsd, onPaid, onCancel }: { priceUsd: number; onPa
       post<PayQuote>('/api/pay/', { coin })
         .then((r) => {
           if (!live) return;
+          remember(r.token, r.exp);
           setQuote(r);
           timer = window.setTimeout(get, Math.max(10_000, r.exp * 1000 - Date.now() - 30_000));
         })
@@ -75,14 +77,9 @@ export function Paywall({ priceUsd, onPaid, onCancel }: { priceUsd: number; onPa
     let live = true;
     let timer = 0;
     const check = async () => {
-      try {
-        const res = await fetch(`/api/pay/status/?token=${encodeURIComponent(q.token)}`, { cache: 'no-store' });
-        if (res.ok && ((await res.json()) as { paid: boolean }).paid) {
-          if (live) paid.current();
-          return;
-        }
-      } catch {
-        // keep watching
+      if (await isPaid(q.token)) {
+        if (live) paid.current(q.token);
+        return;
       }
       if (live) timer = window.setTimeout(check, 2500);
     };

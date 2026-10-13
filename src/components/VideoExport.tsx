@@ -10,6 +10,7 @@ import { Sheet } from './Sheet';
 import { useChartStyle } from '../hooks/useChartStyle';
 import { ChartStylePicker } from './ChartStylePicker';
 import { Paywall } from './Paywall';
+import { forget, unspent } from '../lib/paidDownloads';
 import type { PayInfo } from '../lib/types';
 
 /** A button that opens the video maker: pick a size and a length, watch it, download it. */
@@ -47,11 +48,13 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
   // a paid download: the price, the paywall showing, and a payment not yet spent on a file
   const [pay, setPay] = useState<PayInfo | null>(null);
   const [paying, setPaying] = useState(false);
-  const [unlocked, setUnlocked] = useState(false);
+  /** The paid quote this download spends; kept in the browser until the file is saved. */
+  const [paidToken, setPaidToken] = useState<string | null>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const audio = useRef<AudioContext | null>(null);
   const { width, height } = FORMATS[format];
   const { seconds, play } = timingOf(length, video);
+  const locked = !!pay?.paid && !paidToken;
 
   // the preview loops the real frames, drawn small
   useEffect(() => {
@@ -66,11 +69,13 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
       const t = reduced ? play + 1.5 : ((now - start) / 1000) % seconds;
       g.setTransform(scale, 0, 0, scale, 0, 0);
       drawFrame(g, t, video, format, length);
+      // until it's paid, the preview is marked, so recording the screen isn't the download
+      if (locked) watermark(g, width, height);
       if (!reduced) frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [video, format, length, width, seconds, play, restart]);
+  }, [video, format, length, width, height, seconds, play, restart, locked]);
 
   useEffect(() => () => void audio.current?.close().catch(() => undefined), []);
 
@@ -78,7 +83,13 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
     let live = true;
     fetch('/api/pay/', { cache: 'no-store' })
       .then((r) => r.json() as Promise<PayInfo>)
-      .then((p) => live && setPay(p))
+      .then(async (p) => {
+        if (!live) return;
+        setPay(p);
+        // a payment from before a refresh still buys its download
+        const t = p.paid ? await unspent() : null;
+        if (live && t) setPaidToken(t);
+      })
       .catch(() => live && setPay({ paid: false }));
     return () => {
       live = false;
@@ -103,8 +114,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
     }
   };
 
-  const locked = pay?.paid && !unlocked;
-  const make = async (paidNow = false) => {
+  const make = async (paidNow = false, spend = paidToken) => {
     if (progress !== null) return;
     if (locked && !paidNow) return setPaying(true);
     setPaying(false);
@@ -115,7 +125,10 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
       const name = `${fileBase}-${FORMATS[format].ratio.replace(':', 'x')}-${Math.round(seconds)}s.${out.extension}`;
       const res = await saveFile(new File([out.blob], name, { type: out.blob.type }));
       // the payment buys one file: the next one is paid again
-      if (res !== 'cancelled') setUnlocked(false);
+      if (res !== 'cancelled' && spend) {
+        forget(spend);
+        setPaidToken(null);
+      }
       if (out.extension !== 'mp4') toast('Saved as WebM: X and Instagram need MP4. Chrome or Safari make MP4.');
       else if (sound && !out.sound) toast('Saved without sound: this browser can’t encode audio.');
       else if (res === 'saved') toast('Video saved.');
@@ -200,9 +213,9 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
         <Paywall
           priceUsd={pay.priceUsd}
           onCancel={() => setPaying(false)}
-          onPaid={() => {
-            setUnlocked(true);
-            void make(true);
+          onPaid={(token) => {
+            setPaidToken(token);
+            void make(true, token);
           }}
         />
       ) : (
@@ -211,6 +224,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
           {busy ? `Rendering ${Math.round(progress * 100)}%` : `Download ${FORMATS[format].ratio} · ${Math.round(seconds)} s${locked ? ` · $${pay.priceUsd.toFixed(pay.priceUsd % 1 ? 2 : 0)}` : ''}`}
         </button>
       )}
+      {paidToken && !busy && <p className="mt-2 text-center text-[12px] text-muted">Paid: your download is ready.</p>}
       {pay && !pay.paid && pay.owner && !paying && <p className="mt-2 text-center text-[12px] text-muted">Free for you: this browser is signed in as the owner.</p>}
       {busy && (
         <div className="mt-2 h-1 overflow-hidden rounded-full bg-subtle" aria-hidden>
@@ -219,4 +233,22 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
       )}
     </div>
   );
+}
+
+/** "Preview" across the frame, faint enough to judge the video by, plain enough to spoil a copy. */
+function watermark(g: CanvasRenderingContext2D, width: number, height: number) {
+  g.save();
+  g.translate(width / 2, height / 2);
+  g.rotate(-Math.PI / 7);
+  const size = Math.round(Math.min(width, height) * 0.075);
+  g.font = `800 ${size}px Inter, system-ui, sans-serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(15, 20, 25, 0.10)';
+  const reach = Math.hypot(width, height) / 2;
+  for (let y = -reach; y <= reach; y += size * 3.2) {
+    const shift = (Math.round(y / (size * 3.2)) % 2) * size * 3;
+    for (let x = -reach - shift; x <= reach; x += size * 6.5) g.fillText('PREVIEW', x, y);
+  }
+  g.restore();
 }
