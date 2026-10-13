@@ -26,6 +26,8 @@ export const KEYS = {
   chartStyle: 'receipts:chart-style',
   /** Whether the paste box takes a token CA or a wallet. */
   pasteMode: 'receipts:paste-mode',
+  /** Light or dark video; unset follows the page. */
+  videoTheme: 'receipts:video-theme',
   best: (mint: string) => `receipts:best:${mint}`,
 };
 

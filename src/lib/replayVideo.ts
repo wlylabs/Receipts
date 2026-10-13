@@ -1,6 +1,6 @@
 import type { Marker } from '../components/ReplayChart';
 import { renderSound, SAMPLE_RATE, tickStep, type Cue } from './videoSound';
-import { X_LIGHT } from './palette';
+import { X_DARK, X_LIGHT, type VideoTheme } from './palette';
 import { DEFAULT_STYLE, paletteOf, shape, type ChartStyle } from './chartStyle';
 import { candleAt, drawCandles, drawLine, endedUp, logTicks, range, upTo, type Candle } from './candles';
 
@@ -152,6 +152,8 @@ export interface ReplayVideo {
   paced?: boolean;
   /** How the candles are drawn; plain green and red candles when left out. */
   candleStyle?: ChartStyle;
+  /** X's light or dark colours; light when left out. */
+  theme?: VideoTheme;
   /** Formats an axis value (already scaled). */
   label: (n: number) => string;
   date: (ts: number) => string;
@@ -166,7 +168,15 @@ export interface Outro {
   stamp?: { text: string; tone: 'pos' | 'neg' | null };
 }
 
-const { bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = X_LIGHT;
+// the frame's colours, set from the video's theme at the top of every frame
+let { bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = X_LIGHT as { [K in keyof typeof X_LIGHT]: string };
+
+/** Text on a filled tag or pill: white on green and red, the background's colour on the ink (light in the dark theme). */
+const onFill = (fill: string) => (fill === INK ? BG : '#ffffff');
+
+function setPalette(theme: VideoTheme | undefined) {
+  ({ bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = theme === 'dark' ? X_DARK : X_LIGHT);
+}
 const SANS = "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif";
 const MONO = "'JetBrains Mono', ui-monospace, Menlo, monospace";
 
@@ -412,6 +422,7 @@ function geometry(v: ReplayVideo, L: Layout, view: View = fullView(v)) {
 /** One frame at `time` seconds. */
 export function drawFrame(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f: VideoFormat, l: VideoLength = 'short') {
   g.globalAlpha = 1;
+  setPalette(v.theme);
   drawScene(g, time, v, f, l, 1);
   g.globalAlpha = 1;
 }
@@ -500,7 +511,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.beginPath();
     g.roundRect(axisX - 8, geo.Y(p) - h / 2, w, h, 8);
     g.fill();
-    g.fillStyle = '#ffffff';
+    g.fillStyle = onFill(fill);
     g.textAlign = 'left';
     g.fillText(text, axisX + 3, geo.Y(p) + 9 * big);
   };
@@ -593,6 +604,8 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
 /** The closing receipt: paper sliding up over a dimmed chart, line by line, then the stamp. */
 function drawOutro(g: CanvasRenderingContext2D, L: Layout, v: ReplayVideo, o: Outro, t: number, alpha: number) {
   const { W, H } = L;
+  // the receipt is paper in either theme, so it prints in the light inks
+  const { ink: INK, muted: MUTED } = X_LIGHT;
   const s = Math.min(W, H) / 1080;
   const w = Math.min(W - L.pad * 2, 820 * s);
   const lh = 50 * s;
@@ -675,7 +688,7 @@ function drawOutro(g: CanvasRenderingContext2D, L: Layout, v: ReplayVideo, o: Ou
   g.fillText(o.total?.k.toUpperCase() ?? 'TOTAL P&L', ix, cy);
   const total = o.total?.v ?? v.money(v.pnl);
   g.textAlign = 'right';
-  g.fillStyle = o.total ? (o.total.tone === 'pos' ? POS : o.total.tone === 'neg' ? NEG : INK) : toneColor(v.pnl);
+  g.fillStyle = o.total ? (o.total.tone === 'pos' ? POS : o.total.tone === 'neg' ? NEG : INK) : v.pnl > 1e-9 ? POS : v.pnl < -1e-9 ? NEG : INK;
   fit(g, total, Math.round(92 * s), 750, w - 112 * s);
   cy += 100 * s;
   g.fillText(total, ox, cy);
@@ -740,7 +753,7 @@ function drawPill(g: CanvasRenderingContext2D, x: number, y: number, text: strin
   g.beginPath();
   g.roundRect(x, y - h * 0.72, w, h, h / 2);
   g.fill();
-  g.fillStyle = '#ffffff';
+  g.fillStyle = onFill(color);
   g.textAlign = 'left';
   g.fillText(text, x + size * 0.55, y + size * 0.05);
 }

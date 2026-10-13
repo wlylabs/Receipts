@@ -1,13 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Clapperboard, Download, Loader2, Play, Volume2, VolumeX } from 'lucide-react';
+import { Clapperboard, Download, Loader2, Moon, Play, Sun, Volume2, VolumeX } from 'lucide-react';
 import { drawFrame, FORMATS, LENGTHS, recommendFormat, recommendLength, soundCues, timingOf, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
 import { saveFile } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import { Sheet } from './Sheet';
 import { useChartStyle } from '../hooks/useChartStyle';
+import { useStored } from '../hooks/useStored';
+import { KEYS } from '../lib/game';
+import { currentTheme } from '../lib/theme';
+import type { VideoTheme } from '../lib/palette';
 import { ChartStylePicker } from './ChartStylePicker';
 import { Paywall } from './Paywall';
 import { forget, unspent } from '../lib/paidDownloads';
@@ -39,7 +43,11 @@ export function VideoSheet({ video, fileBase, open, onClose, title = 'Make a vid
 function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string }) {
   // the video draws its candles the way the page's charts do
   const [style] = useChartStyle();
-  const video = useMemo(() => ({ ...run, candleStyle: style }), [run, style]);
+  // light or dark like X's timeline: the page's theme until one is picked here
+  const [pickedTheme, setTheme] = useStored<VideoTheme | null>(KEYS.videoTheme, null);
+  const [pageTheme] = useState<VideoTheme>(() => currentTheme());
+  const theme: VideoTheme = pickedTheme === 'light' || pickedTheme === 'dark' ? pickedTheme : pageTheme;
+  const video = useMemo(() => ({ ...run, candleStyle: style, theme }), [run, style, theme]);
   // the cut that suits this run is picked to start with, and marked
   const pick = useMemo(() => recommendLength(run), [run]);
   const [length, setLength] = useState<VideoLength>(pick.length);
@@ -180,7 +188,25 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
         </p>
       )}
 
-      <p className="label mt-4 flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">2</span> Chart</p>
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <p className="label flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">2</span> Chart</p>
+        <div role="radiogroup" aria-label="Video background" className="flex rounded-full bg-subtle p-0.5 text-[12px]">
+          {(['light', 'dark'] as const).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="radio"
+              aria-checked={theme === k}
+              disabled={busy}
+              onClick={() => setTheme(k)}
+              className={cx('flex h-7 items-center gap-1 rounded-full px-2.5 font-medium transition-all', theme === k ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-muted hover:text-ink')}
+            >
+              {k === 'light' ? <Sun className="size-3.5" aria-hidden /> : <Moon className="size-3.5" aria-hidden />}
+              {k === 'light' ? 'Light' : 'Dark'}
+            </button>
+          ))}
+        </div>
+      </div>
       <ChartStylePicker inline className="mt-1.5" />
 
       <div className="mt-4 flex flex-wrap items-end gap-2 sm:gap-3">
@@ -215,7 +241,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
       </p>
 
       <div className="mt-4 flex justify-center rounded-xl border border-line bg-subtle p-2">
-        <canvas key={`${format}`} ref={canvas} width={previewW} height={Math.round((previewW * height) / width)} className={cx('block h-auto rounded-md bg-white', format === 'portrait' ? 'w-[46%] sm:w-[34%]' : format === 'square' ? 'w-[78%] sm:w-[62%]' : 'w-full')} aria-label="Video preview" />
+        <canvas key={`${format}`} ref={canvas} width={previewW} height={Math.round((previewW * height) / width)} className={cx('block h-auto rounded-md', theme === 'dark' ? 'bg-black' : 'bg-white', format === 'portrait' ? 'w-[46%] sm:w-[34%]' : format === 'square' ? 'w-[78%] sm:w-[62%]' : 'w-full')} aria-label="Video preview" />
       </div>
       <div className="mt-2 flex items-center justify-between gap-3">
         <p className="text-[12.5px] text-muted">
