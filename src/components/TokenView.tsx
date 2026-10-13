@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Activity, ArrowUpRight, Clapperboard, Copy, CopyCheck, Loader2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, ArrowUpRight, ChevronRight, Clapperboard, Copy, CopyCheck, Loader2, TrendingDown, TrendingUp } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { KEYS, type Recent } from '../lib/game';
@@ -24,6 +24,7 @@ import { TokenImage } from './TokenImage';
 import { ReplayChart } from './ReplayChart';
 import { VideoExport, VideoSheet } from './VideoExport';
 import { ChartStylePicker } from './ChartStylePicker';
+import { Trail } from './Trail';
 
 /** Wallets shown on each side of the board. */
 const SIDE = 3;
@@ -36,12 +37,12 @@ export function TokenView({ ca }: { ca: string }) {
     if (data) setRecent((r) => pushRecent(r, { kind: 'token', address: data.token.address, label: `$${data.token.symbol}` }));
   }, [data, setRecent]);
 
-  if (state.status === 'loading') return <Loading what={`Loading ${short(ca)}’s latest trades…`} />;
+  if (state.status === 'loading') return <Loading what={`Reading ${short(ca)}’s chart and latest trades…`} />;
   if (state.status === 'error') return <Failure error={state.error} onRetry={reload} />;
   return <TokenPage r={state.data} />;
 }
 
-/** The token's market right now and its every candle (as a video too), then its top 3 winners and losers to copy or turn into a video. */
+/** The token's market right now and its every candle (as a video too), then its top 3 winners and losers to replay or turn into a video. */
 function TokenPage({ r }: { r: TokenReceipts }) {
   const { token } = r;
   const [now] = useState(() => Date.now() / 1000);
@@ -55,100 +56,114 @@ function TokenPage({ r }: { r: TokenReceipts }) {
   const market = marketOf({ priceUsd: token.priceUsd, athUsd: r.ath.priceUsd, change24h: token.change24h, buys: r.window.buys, sells: r.window.sells });
   const winners = r.board.filter((w) => w.pnl > 0).slice(0, SIDE);
   const losers = r.board.filter((w) => w.pnl < 0).reverse().slice(0, SIDE);
+  const dayTone = token.change24h === null ? null : token.change24h >= 0 ? 'pos' : 'neg';
 
   return (
-    <div className="reveal mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
+    <div className="reveal mx-auto max-w-6xl px-4 pb-16 pt-4 sm:px-6 sm:pt-6">
+      <Trail crumbs={[{ step: 'Token', label: `$${token.symbol}` }]} />
+
       {/* the ticker */}
-      <header className="flex items-center gap-3">
-        <TokenImage src={token.image} symbol={token.symbol} className="size-10 text-base" />
+      <header className="mt-4 flex flex-wrap items-start gap-x-4 gap-y-3">
+        <TokenImage src={token.image} symbol={token.symbol} className="size-12 text-lg" />
         <div className="min-w-0 flex-1">
-          <h1 className="flex items-baseline gap-2 truncate">
-            <span className="display text-[24px]">{token.symbol}</span>
-            <span className="truncate text-[13px] text-muted">{token.name}</span>
+          <h1 className="flex flex-wrap items-baseline gap-x-2.5">
+            <span className="display text-[30px] sm:text-[36px]">{token.symbol}</span>
+            <span className="truncate text-[14px] text-muted">{token.name}</span>
           </h1>
-          <p className="truncate text-[12.5px] text-muted">
-            {token.chainName} · {token.dex} · {token.quoteSymbol} pair
-          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            <span className="chip">{token.chainName}</span>
+            <span className="chip">{token.dex}</span>
+            <span className="chip">{token.symbol}/{token.quoteSymbol}</span>
+            <button type="button" onClick={() => copy(token.address, 'CA')} className="chip transition-colors hover:border-line-strong hover:text-ink" title="Copy the contract address">
+              {short(token.address)} <Copy className="size-3" aria-hidden />
+            </button>
+            <a href={token.url} target="_blank" rel="noreferrer" className="chip transition-colors hover:border-line-strong hover:text-ink">
+              DexScreener <ArrowUpRight className="size-3" aria-hidden />
+            </a>
+          </div>
         </div>
-        <div className="text-right">
-          <p className="num display text-[24px]">{supply ? `MC ${mcap(token.mcapUsd)}` : price(token.priceUsd)}</p>
-          {token.change24h !== null && <p className={cx('num text-[12.5px] font-medium', token.change24h >= 0 ? 'text-pos' : 'text-neg')}>{pct(token.change24h / 100, { signed: true })} 24h</p>}
+        <div className="text-left sm:text-right">
+          <p className="label">{supply ? 'Market cap' : 'Price'}</p>
+          <p className="num display mt-1 text-[30px] sm:text-[36px]">{supply ? mcap(token.mcapUsd) : price(token.priceUsd)}</p>
+          {token.change24h !== null && (
+            <p className={cx('mono mt-1 inline-block rounded px-1.5 py-0.5 text-[12px] font-semibold', dayTone === 'pos' ? 'bg-pos-wash text-pos' : 'bg-neg-wash text-neg')}>{pct(token.change24h / 100, { signed: true })} 24h</p>
+          )}
         </div>
       </header>
 
-      {/* the market right now: one word on where it stands, then the numbers behind it */}
-      <section className="panel mt-4 overflow-hidden" aria-label="Market">
-        <div className="flex items-center gap-3 px-3.5 py-3">
-          <span className={cx('grid size-9 shrink-0 place-items-center rounded-lg', market.tone === 'pos' ? 'bg-pos-wash text-pos' : market.tone === 'neg' ? 'bg-neg-wash text-neg' : 'bg-subtle text-ink-2')} aria-hidden>
-            {market.tone === 'pos' ? <TrendingUp className="size-4.5" /> : market.tone === 'neg' ? <TrendingDown className="size-4.5" /> : <Activity className="size-4.5" />}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className={cx('text-[15px] font-semibold leading-tight', market.tone === 'pos' && 'text-pos', market.tone === 'neg' && 'text-neg')}>{market.label}</p>
-            <p className="truncate text-[12.5px] text-muted">{market.line}</p>
-          </div>
-        </div>
-        {/* the numbers, in a grid that wraps instead of scrolling sideways on a phone */}
-        <dl className="grid grid-cols-2 gap-px border-t border-line bg-line text-[12.5px] sm:grid-cols-4">
-          <Kv k="Price" v={price(token.priceUsd)} />
-          <Kv k={supply ? 'ATH MC' : 'ATH'} v={cap(r.ath.priceUsd)} />
-          <Kv k="From ATH" v={market.fromAth === null ? '-' : pct(market.fromAth, { signed: true })} tone={market.fromAth !== null && market.fromAth < -0.005 ? 'neg' : null} />
-          <Kv k="24h" v={token.change24h === null ? '-' : pct(token.change24h / 100, { signed: true })} tone={token.change24h === null ? null : token.change24h >= 0 ? 'pos' : 'neg'} />
-          <Kv k="Liquidity" v={usd(token.liquidityUsd)} />
-          <Kv k="Vol 24h" v={usd(token.volume24hUsd)} />
-          <Kv k={`Traders · ${span(r.window.to - r.window.from)}`} v={String(r.window.traders)} />
-          <Kv k="Launched" v={token.createdAt ? `${span(now - token.createdAt)} ago` : '-'} />
-        </dl>
-        {market.buyShare !== null && (
-          <div className="border-t border-line px-3.5 py-2.5">
-            <div className="num flex justify-between text-[11.5px]">
-              <span className="text-pos">{r.window.buys} buys</span>
-              <span className="text-muted">latest {r.window.trades} trades</span>
-              <span className="text-neg">{r.window.sells} sells</span>
-            </div>
-            <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-neg" aria-label={`${pct(market.buyShare)} of the latest trades are buys`}>
-              <div className="h-full bg-pos" style={{ width: `${market.buyShare * 100}%` }} />
-            </div>
-          </div>
-        )}
-      </section>
-
-      {/* the token's whole history, every candle */}
-      <section className="panel mt-4 p-3 sm:p-4" aria-labelledby="chart-title">
-        <div className="mb-2 flex items-center justify-between gap-3 px-1">
-          <h2 id="chart-title" className="eyebrow">
-            Since launch
-          </h2>
-          <div className="flex items-center gap-1">
-            <p className="num text-[11.5px] text-muted">
-              {chart.candles.length} × {r.candle}
-            </p>
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        {/* the token's whole history, every candle */}
+        <section className="panel min-w-0 p-3 sm:p-4" aria-labelledby="chart-title">
+          <div className="mb-2 flex items-center justify-between gap-3 px-1">
+            <h2 id="chart-title" className="label">
+              Since launch · {chart.candles.length} × {r.candle}
+            </h2>
             <ChartStylePicker className="-my-1.5" />
           </div>
-        </div>
-        <ReplayChart className="md:aspect-[3/1] lg:aspect-[4/1]" candles={chart.candles} step={chart.step} scale={supply || 1} label={supply ? mcap : price} tone={token.change24h === null ? null : token.change24h >= 0 ? 'pos' : 'neg'} />
-        <div className="num mt-1 flex justify-between pr-14 text-[11px] text-muted sm:pr-16">
-          <span>Launched {date(token.createdAt ?? chart.candles[0]?.[0] ?? now)}</span>
-          <span>Now</span>
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          {film ? <VideoExport video={film.video} fileBase={film.fileBase} title={`Video · ${token.symbol} since launch`} className="btn-primary h-9 min-h-0 px-3 text-[12.5px]" /> : <span />}
-          <a href={token.url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[12.5px] text-muted hover:text-ink">
-            DexScreener <ArrowUpRight className="size-3.5" aria-hidden />
-          </a>
-        </div>
-      </section>
+          <ReplayChart className="md:aspect-[2/1]" candles={chart.candles} step={chart.step} scale={supply || 1} label={supply ? mcap : price} tone={dayTone} />
+          <div className="mono mt-1 flex justify-between pr-14 text-[10.5px] text-muted sm:pr-16">
+            <span>Launched {date(token.createdAt ?? chart.candles[0]?.[0] ?? now)}</span>
+            <span>Now</span>
+          </div>
+          {film && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-dashed border-line-strong px-1 pt-3">
+              <p className="text-[13px] text-muted">Turn this chart into a launch-to-now video.</p>
+              <VideoExport video={film.video} fileBase={film.fileBase} title={`Video · ${token.symbol} since launch`} className="btn-quiet h-9 min-h-0 px-3 text-[13px]" />
+            </div>
+          )}
+        </section>
 
-      <section className="mt-6" aria-labelledby="board-title">
-        <h2 id="board-title" className="text-[15px] font-semibold tracking-tight">
-          Top traders
-        </h2>
-        <p className="mt-0.5 text-[12.5px] text-muted">
-          {`${r.board.length} wallets · last ${span(r.window.to - r.window.from)}`}
-        </p>
+        {/* the market right now: one word on where it stands, then the numbers behind it */}
+        <aside className="panel overflow-hidden" aria-label="Market">
+          <div className={cx('flex items-center gap-3 px-4 py-3.5', market.tone === 'pos' ? 'bg-pos-wash' : market.tone === 'neg' ? 'bg-neg-wash' : 'bg-subtle')}>
+            <span className={cx('grid size-9 shrink-0 place-items-center rounded-lg bg-surface ring-1 ring-line', market.tone === 'pos' ? 'text-pos' : market.tone === 'neg' ? 'text-neg' : 'text-ink-2')} aria-hidden>
+              {market.tone === 'pos' ? <TrendingUp className="size-4.5" /> : market.tone === 'neg' ? <TrendingDown className="size-4.5" /> : <Activity className="size-4.5" />}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className={cx('text-[15px] font-semibold leading-tight', market.tone === 'pos' && 'text-pos', market.tone === 'neg' && 'text-neg')}>{market.label}</p>
+              <p className="text-[12.5px] leading-snug text-ink-2">{market.line}</p>
+            </div>
+          </div>
+          <dl className="px-4 py-2 text-[13px]">
+            <Kv k="Price" v={price(token.priceUsd)} />
+            <Kv k={supply ? 'ATH MC' : 'ATH'} v={cap(r.ath.priceUsd)} />
+            <Kv k="From ATH" v={market.fromAth === null ? '-' : pct(market.fromAth, { signed: true })} tone={market.fromAth !== null && market.fromAth < -0.005 ? 'neg' : null} />
+            <Kv k="Liquidity" v={usd(token.liquidityUsd)} />
+            <Kv k="Volume 24h" v={usd(token.volume24hUsd)} />
+            <Kv k={`Traders · ${span(r.window.to - r.window.from)}`} v={String(r.window.traders)} />
+            <Kv k="Launched" v={token.createdAt ? `${span(now - token.createdAt)} ago` : '-'} />
+          </dl>
+          {market.buyShare !== null && (
+            <div className="border-t border-dashed border-line-strong px-4 py-3">
+              <div className="mono flex justify-between text-[11px]">
+                <span className="text-pos">{r.window.buys} buys</span>
+                <span className="text-muted">last {r.window.trades}</span>
+                <span className="text-neg">{r.window.sells} sells</span>
+              </div>
+              <div className="mt-1.5 flex h-2 gap-0.5 overflow-hidden rounded-sm" aria-label={`${pct(market.buyShare)} of the latest trades are buys`}>
+                <div className="h-full rounded-l-sm bg-pos" style={{ width: `${market.buyShare * 100}%` }} />
+                <div className="h-full flex-1 rounded-r-sm bg-neg" />
+              </div>
+            </div>
+          )}
+        </aside>
+      </div>
+
+      <section className="mt-10" aria-labelledby="board-title">
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="board-title" className="text-[20px] font-bold tracking-tight">
+              Who won, who got wrecked
+            </h2>
+            <p className="mt-0.5 text-[13px] text-muted">
+              {`${r.board.length} wallets in the last ${span(r.window.to - r.window.from)}. Pick one to replay its trades.`}
+            </p>
+          </div>
+        </div>
         {r.board.length === 0 ? (
-          <p className="panel mt-2 px-4 py-6 text-[13px] text-muted">No recent trades in the feed.</p>
+          <p className="panel mt-3 px-4 py-6 text-[13px] text-muted">No recent trades in the feed.</p>
         ) : (
-          <div className="mt-2 grid gap-2 sm:grid-cols-2 sm:gap-3">
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
             <Side title="Top gainers" tone="pos" rows={winners} empty="Nobody in profit yet." token={token} />
             <Side title="Biggest losers" tone="neg" rows={losers} empty="Nobody down yet." token={token} />
           </div>
@@ -160,55 +175,59 @@ function TokenPage({ r }: { r: TokenReceipts }) {
 
 function Kv({ k, v, tone = null }: { k: string; v: string; tone?: 'pos' | 'neg' | null }) {
   return (
-    <div className="min-w-0 bg-surface px-3 py-2">
-      <dt className="truncate text-[11.5px] text-muted">{k}</dt>
-      <dd className={cx('num mt-0.5 truncate text-[14px] font-semibold', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{v}</dd>
+    <div className="flex items-baseline justify-between gap-3 border-b border-dashed border-line py-2 last:border-0">
+      <dt className="truncate text-muted">{k}</dt>
+      <dd className={cx('mono truncate font-medium', tone === 'pos' && 'text-pos', tone === 'neg' && 'text-neg')}>{v}</dd>
     </div>
   );
 }
 
 const copy = async (text: string, what: string) => toast((await copyText(text)) ? `${what} copied.` : `Couldn’t copy the ${what.toLowerCase()}.`);
 
-/** One side of the board: its top 3, each with copy, replay and a video made right here. */
+/** One side of the board: its top 3, each to replay, copy, or turn into a video right here. */
 function Side({ title, tone, rows, empty, token }: { title: string; tone: 'pos' | 'neg'; rows: BoardRow[]; empty: string; token: TokenInfo }) {
   return (
     <div className="panel min-w-0 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 pt-3 pb-1.5">
-        <h3 className={cx('flex flex-1 items-center gap-1.5 text-[12px] font-semibold tracking-wide uppercase', tone === 'pos' ? 'text-pos' : 'text-neg')}>
+      <div className={cx('flex items-center gap-2 border-b border-line px-4 py-2.5', tone === 'pos' ? 'bg-pos-wash' : 'bg-neg-wash')}>
+        <h3 className={cx('label flex flex-1 items-center gap-1.5 font-semibold', tone === 'pos' ? 'text-pos' : 'text-neg')}>
           {tone === 'pos' ? <TrendingUp className="size-3.5" aria-hidden /> : <TrendingDown className="size-3.5" aria-hidden />}
           {title}
         </h3>
-        {rows.length > 0 && (
-          <button type="button" onClick={() => copy(rows.map((r) => r.trader).join('\n'), rows.length === 1 ? 'Address' : `${rows.length} addresses`)} className="btn btn-quiet -my-1 h-7 min-h-0 px-2 text-[12px]">
-            <CopyCheck className="size-3.5" aria-hidden /> Copy {rows.length === 1 ? '1' : `top ${rows.length}`}
+        {rows.length > 1 && (
+          <button type="button" onClick={() => copy(rows.map((r) => r.trader).join('\n'), `${rows.length} addresses`)} className="btn btn-ghost -my-1 h-7 min-h-0 px-2 text-[12px]">
+            <CopyCheck className="size-3.5" aria-hidden /> Copy all
           </button>
         )}
       </div>
       {rows.length === 0 ? (
-        <p className="px-3 pb-3 text-[12.5px] text-muted">{empty}</p>
+        <p className="px-4 py-5 text-[13px] text-muted">{empty}</p>
       ) : (
-        <ol className="divide-y divide-line">
+        <ol>
           {rows.map((row, i) => (
-            <li key={row.trader} className="flex items-center gap-2 px-3 py-2">
-              <span className="num w-4 shrink-0 text-[11.5px] text-faint">{i + 1}</span>
+            <li key={row.trader} className="group relative flex items-center gap-3 border-b border-dashed border-line px-4 py-3 transition-colors last:border-0 hover:bg-hover/60">
+              <span className="mono w-5 shrink-0 text-[12px] font-bold text-faint">#{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1">
-                  <Link href={ROUTES.trader(row.trader, token.address)} className="num min-w-0 truncate text-[13px] font-medium hover:underline" title="Replay this wallet">
+                  {/* the whole row opens the replay; the buttons sit above that link */}
+                  <Link href={ROUTES.trader(row.trader, token.address)} className="mono min-w-0 truncate text-[13px] font-medium after:absolute after:inset-0 hover:underline" title="Replay this wallet">
                     {short(row.trader)}
                   </Link>
-                  <button type="button" onClick={() => copy(row.trader, 'Address')} aria-label={`Copy ${row.trader}`} title="Copy address" className="-my-1 grid size-7 shrink-0 place-items-center rounded-md text-muted hover:bg-subtle hover:text-ink">
+                  <button type="button" onClick={() => copy(row.trader, 'Address')} aria-label={`Copy ${row.trader}`} title="Copy address" className="relative -my-1 grid size-7 shrink-0 place-items-center rounded-md text-faint hover:bg-subtle hover:text-ink">
                     <Copy className="size-3.5" aria-hidden />
                   </button>
                 </div>
-                <div className="num flex flex-wrap items-baseline gap-x-1.5">
-                  <span className={cx('text-[14px] font-semibold', tone === 'pos' ? 'text-pos' : 'text-neg')}>{usd(row.pnl, { signed: true })}</span>
-                  {row.roi !== null && <span className={cx('text-[11.5px]', tone === 'pos' ? 'text-pos' : 'text-neg')}>{pct(row.roi, { signed: true })}</span>}
-                </div>
-                <p className="num truncate text-[11.5px] text-muted">
+                <p className="mono truncate text-[11.5px] text-muted">
                   {row.trades} {row.trades === 1 ? 'trade' : 'trades'} · {usd(row.usdIn)} in
                 </p>
               </div>
-              <QuickVideo trader={row.trader} token={token} />
+              <div className="mono text-right">
+                <p className={cx('text-[15px] font-bold', tone === 'pos' ? 'text-pos' : 'text-neg')}>{usd(row.pnl, { signed: true })}</p>
+                {row.roi !== null && <p className={cx('text-[11.5px]', tone === 'pos' ? 'text-pos' : 'text-neg')}>{pct(row.roi, { signed: true })}</p>}
+              </div>
+              <div className="relative flex shrink-0 items-center gap-1">
+                <QuickVideo trader={row.trader} token={token} />
+                <ChevronRight className="hidden size-4 text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-ink sm:block" aria-hidden />
+              </div>
             </li>
           ))}
         </ol>
@@ -243,9 +262,9 @@ function QuickVideo({ trader, token }: { trader: string; token: TokenInfo }) {
 
   return (
     <>
-      <button type="button" onClick={make} disabled={busy} className="btn btn-primary h-9 min-h-0 shrink-0 px-3 text-[12.5px]" aria-label={`Make a video of ${short(trader)}`}>
+      <button type="button" onClick={make} disabled={busy} className="btn btn-quiet h-8 min-h-0 shrink-0 px-2.5 text-[12px]" aria-label={`Make a video of ${short(trader)}`} title="Make a video">
         {busy ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Clapperboard className="size-3.5" aria-hidden />}
-        Video
+        <span className="hidden sm:inline">Video</span>
       </button>
       <VideoSheet video={story?.video ?? null} fileBase={story?.fileBase ?? ''} open={open} onClose={close} title={`Video · ${short(trader)} on ${token.symbol}`} />
     </>

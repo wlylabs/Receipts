@@ -22,8 +22,8 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
   colorScheme: 'light dark',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#0b0b0c' },
+    { media: '(prefers-color-scheme: light)', color: '#f3f1ea' },
+    { media: '(prefers-color-scheme: dark)', color: '#0c0c0b' },
   ],
 };
 
@@ -34,7 +34,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-ink focus:px-3 focus:py-2 focus:text-on-ink">
           Skip to content
         </a>
-        <main id="main" className="min-h-dvh pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
+        <main id="main" className="min-h-dvh pb-[env(safe-area-inset-bottom)]">
           {children}
         </main>
         <Toaster />

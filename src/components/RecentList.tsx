@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { History, LineChart, Wallet } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import { useStored } from '../hooks/useStored';
 import { KEYS, type Recent } from '../lib/game';
 import { ROUTES } from '../lib/site';
@@ -9,36 +9,48 @@ import { cx } from '../lib/cx';
 
 export const hrefOf = (r: Recent) => (r.kind === 'token' ? ROUTES.token(r.address) : r.kind === 'trader' && r.ca ? ROUTES.trader(r.address, r.ca) : ROUTES.wallet(r.address));
 
-const ICONS = { token: LineChart, wallet: Wallet, trader: History };
 const KINDS = { token: 'Token', wallet: 'Wallet', trader: 'Replay' };
 
-/** What this browser looked up last, newest first. */
-export function RecentList({ limit, compact = false, onPick, hideEmpty = false }: { limit?: number; compact?: boolean; onPick?: () => void; hideEmpty?: boolean }) {
+/** What this browser looked up last, newest first: a short menu list, or a grid of stubs. */
+export function RecentList({ limit, compact = false, onPick, hideEmpty = false, title }: { limit?: number; compact?: boolean; onPick?: () => void; hideEmpty?: boolean; title?: string }) {
   const [recent] = useStored<Recent[]>(KEYS.recent, []);
   const list = limit ? recent.slice(0, limit) : recent;
 
   if (!list.length) {
     if (hideEmpty) return null;
-    return <p className={cx('text-muted', compact ? 'px-3 text-[12.5px]' : 'text-[13.5px]')}>Nothing yet.</p>;
+    return <p className="px-2 py-2 text-[12.5px] text-muted">Nothing yet. Paste an address to start.</p>;
   }
+  if (compact)
+    return (
+      <ul className="space-y-0.5">
+        {list.map((r) => (
+          <li key={`${r.kind}:${r.address}:${r.ca ?? ''}`}>
+            <Link href={hrefOf(r)} onClick={onPick} className="flex items-center gap-2.5 rounded-md px-2 py-2 text-[13px] text-ink-2 transition-colors hover:bg-hover hover:text-ink">
+              <span className="label w-12 shrink-0 text-[9.5px]">{KINDS[r.kind]}</span>
+              <span className="mono min-w-0 flex-1 truncate text-[12.5px]">{r.label}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    );
   return (
-    <ul className={cx(compact ? 'space-y-0.5' : 'divide-y divide-line overflow-hidden rounded-[14px] border border-line')}>
-      {list.map((r) => {
-        const Icon = ICONS[r.kind];
-        return (
+    <div>
+      {title && <h2 className="label mb-3">{title}</h2>}
+      <ul className="grid gap-2 sm:grid-cols-2">
+        {list.map((r) => (
           <li key={`${r.kind}:${r.address}:${r.ca ?? ''}`}>
             <Link
               href={hrefOf(r)}
               onClick={onPick}
-              className={cx('flex items-center gap-2.5 text-ink-2 transition-colors hover:bg-hover hover:text-ink', compact ? 'rounded-lg px-3 py-1.5 text-[13px]' : 'px-4 py-3 text-[14px]')}
+              className="group flex items-center gap-3 rounded-[10px] border border-dashed border-line-strong bg-surface/60 px-3.5 py-3 transition-colors hover:border-solid hover:border-ink hover:bg-surface"
             >
-              <Icon className="size-4 shrink-0 text-faint" aria-hidden />
-              <span className="num min-w-0 flex-1 truncate">{r.label}</span>
-              {!compact && <span className="text-[12px] text-muted">{KINDS[r.kind]}</span>}
+              <span className={cx('chip shrink-0', r.kind === 'trader' && 'border-ink bg-accent text-on-accent')}>{KINDS[r.kind]}</span>
+              <span className="mono min-w-0 flex-1 truncate text-[13px] text-ink">{r.label}</span>
+              <ArrowUpRight className="size-4 shrink-0 text-faint transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-ink" aria-hidden />
             </Link>
           </li>
-        );
-      })}
-    </ul>
+        ))}
+      </ul>
+    </div>
   );
 }

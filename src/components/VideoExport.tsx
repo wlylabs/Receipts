@@ -14,13 +14,13 @@ import { forget, unspent } from '../lib/paidDownloads';
 import type { PayInfo } from '../lib/types';
 
 /** A button that opens the video maker: pick a size and a length, watch it, download it. */
-export function VideoExport({ video, fileBase, className, title }: { video: ReplayVideo; fileBase: string; className?: string; title?: string }) {
+export function VideoExport({ video, fileBase, className, title, label = 'Video' }: { video: ReplayVideo; fileBase: string; className?: string; title?: string; label?: string }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={cx('btn', className ?? 'btn-quiet')}>
-        <Clapperboard className="size-4" aria-hidden /> Video
+        <Clapperboard className="size-4" aria-hidden /> {label}
       </button>
       <VideoSheet video={video} fileBase={fileBase} open={open} onClose={close} title={title} />
     </>
@@ -143,7 +143,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
   const previewW = format === 'landscape' ? 640 : format === 'square' ? 480 : 300;
   return (
     <div>
-      <p className="eyebrow">Size</p>
+      <p className="label flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">1</span> Size</p>
       <div role="radiogroup" aria-label="Size" className="mt-1.5 grid grid-cols-3 gap-2">
         {(Object.keys(FORMATS) as VideoFormat[]).map((f) => {
           const on = f === format;
@@ -155,7 +155,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
               aria-checked={on}
               disabled={busy}
               onClick={() => setFormat(f)}
-              className={cx('flex flex-col items-start gap-1.5 rounded-xl border px-3 py-2.5 text-left transition-colors', on ? 'border-ink bg-subtle' : 'border-line hover:bg-hover')}
+              className={cx('flex flex-col items-start gap-1.5 rounded-[10px] border px-3 py-2.5 text-left transition-colors', on ? 'border-ink bg-surface shadow-[0_2px_0_var(--ink)]' : 'border-line hover:bg-hover')}
             >
               <span className={cx('rounded-[3px] border-2', on ? 'border-ink' : 'border-line-strong', f === 'landscape' ? 'h-4 w-7' : f === 'square' ? 'size-5' : 'h-6 w-3.5')} aria-hidden />
               <span className="text-[13px] font-semibold leading-tight">
@@ -167,12 +167,12 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
         })}
       </div>
 
-      <p className="eyebrow mt-3">Candles</p>
+      <p className="label mt-4 flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">2</span> Candles</p>
       <ChartStylePicker inline className="mt-1.5" />
 
-      <div className="mt-3 flex flex-wrap items-end gap-3">
+      <div className="mt-4 flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">
-          <p className="eyebrow">Length</p>
+          <p className="label flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">3</span> Length</p>
           <div role="radiogroup" aria-label="Length" className="mt-1.5 flex rounded-lg bg-subtle p-0.5">
             {(Object.keys(LENGTHS) as VideoLength[]).map((l) => (
               <button
@@ -219,7 +219,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
           }}
         />
       ) : (
-        <button type="button" onClick={() => make()} disabled={busy || !pay} className="btn btn-primary mt-4 h-11 w-full">
+        <button type="button" onClick={() => make()} disabled={busy || !pay} className="btn btn-primary mt-4 h-12 w-full text-[15px]">
           {busy || !pay ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
           {busy ? `Rendering ${Math.round(progress * 100)}%` : `Download ${FORMATS[format].ratio} · ${Math.round(seconds)} s${locked ? ` · $${pay.priceUsd.toFixed(pay.priceUsd % 1 ? 2 : 0)}` : ''}`}
         </button>

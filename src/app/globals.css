@@ -5,52 +5,62 @@
 @import '@fontsource/jetbrains-mono/latin-700.css';
 
 /*
- * Cinematic, minimal: a near-black stage at night and a bright paper one by day, a soft spotlight
- * from the top, hairline edges, one ink colour for actions, and green and red only where money
- * moves. Motion is slow-in, soft-out, with a little blur, like a title card coming into focus.
+ * Thermal paper: the app is a till that prints receipts. Warm paper by day, a dark counter at
+ * night, ink for text, mono type for every number and label the way a till prints them, dashed
+ * rules between lines, and one highlighter yellow for the thing to do next. Green and red only
+ * where money moves.
  */
 :root {
-  --bg: #fbfbfc;
-  --surface: #ffffff;
-  --subtle: #f4f4f6;
-  --hover: #eeeef1;
-  --line: #e7e7eb;
-  --line-strong: #d4d4da;
-  --ink: #0c0c0e;
-  --ink-2: #3a3a41;
-  --muted: #6e6e78;
-  --faint: #a3a3ad;
-  --pos: #12a150;
-  --pos-wash: #e9f9f0;
-  --neg: #e5322d;
-  --neg-wash: #fdeeee;
-  --on-ink: #ffffff;
-  --glow: rgba(12, 12, 14, 0.06);
-  --shadow: 0 1px 2px rgba(12, 12, 14, 0.04), 0 8px 24px -12px rgba(12, 12, 14, 0.08);
-  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  --bg: #f3f1ea;
+  --surface: #fffdf7;
+  --subtle: #ebe8de;
+  --hover: #e5e1d5;
+  --line: #dcd7c9;
+  --line-strong: #c3bdab;
+  --ink: #141311;
+  --ink-2: #3b3934;
+  --muted: #6f6b60;
+  --faint: #a29d8f;
+  --pos: #0f8a45;
+  --pos-wash: #ddf3e4;
+  --neg: #d4302b;
+  --neg-wash: #fbe3e1;
+  --on-ink: #fffdf7;
+  --accent: #ffd426;
+  --on-accent: #141311;
+  /* the hard edge under keys and the paste box */
+  --key: #141311;
+  --key-field: #141311;
+  --dot: rgba(20, 19, 17, 0.07);
+  --shadow: 0 1px 0 rgba(20, 19, 17, 0.04), 0 10px 30px -18px rgba(20, 19, 17, 0.25);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.6);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #060607;
-    --surface: #0e0e10;
-    --subtle: #141417;
-    --hover: #1a1a1e;
-    --line: #1f1f23;
-    --line-strong: #2b2b31;
-    --ink: #f5f5f6;
-    --ink-2: #cfcfd5;
-    --muted: #8e8e98;
-    --faint: #5f5f69;
-    --pos: #2bd576;
-    --pos-wash: #0b1f14;
-    --neg: #ff4d4a;
-    --neg-wash: #250e0e;
-    --on-ink: #060607;
-    --glow: rgba(255, 255, 255, 0.07);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px -16px rgba(0, 0, 0, 0.8);
-    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    --bg: #0c0c0b;
+    --surface: #151513;
+    --subtle: #1c1c19;
+    --hover: #23231f;
+    --line: #2a2925;
+    --line-strong: #3a3933;
+    --ink: #f3f1ea;
+    --ink-2: #cfccc2;
+    --muted: #8f8b80;
+    --faint: #5f5c54;
+    --pos: #34d27a;
+    --pos-wash: #0e2117;
+    --neg: #ff5a4f;
+    --neg-wash: #2a1110;
+    --on-ink: #0c0c0b;
+    --accent: #ffd426;
+    --on-accent: #141311;
+    --key: #8a6c00;
+    --key-field: #3a3933;
+    --dot: rgba(243, 241, 234, 0.06);
+    --shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 16px 40px -20px rgba(0, 0, 0, 0.9);
+    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.03);
     color-scheme: dark;
   }
 }
@@ -71,6 +81,8 @@
   --color-neg: var(--neg);
   --color-neg-wash: var(--neg-wash);
   --color-on-ink: var(--on-ink);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
 }
@@ -81,9 +93,9 @@ html {
 }
 
 body {
-  /* the spotlight: a soft pool of light from the top of the stage */
+  /* the counter: a faint dot grid, like the squared paper under a till */
   background:
-    radial-gradient(1200px 520px at 50% -180px, var(--glow), transparent 70%) no-repeat,
+    radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 0) 0 0 / 22px 22px,
     var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
@@ -116,38 +128,98 @@ body {
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 12px;
   box-shadow: var(--shadow), var(--edge);
 }
 
-/* a display line: tight, heavy, a little light falling off it */
+/* a display line: tight and heavy */
 .display {
-  font-weight: 650;
+  font-weight: 700;
   letter-spacing: -0.045em;
-  line-height: 1.02;
-}
-.fade-text {
-  background: linear-gradient(180deg, var(--ink) 30%, color-mix(in srgb, var(--ink) 45%, transparent));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  line-height: 0.98;
 }
 
-/* a title card coming into focus; --d staggers the pieces */
+/* the till's voice: mono, small, upper case; every label and caption on the page */
+.label {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* kept for older call sites */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* a highlighter stroke behind a word */
+.mark {
+  background: linear-gradient(transparent 58%, var(--accent) 58%, var(--accent) 92%, transparent 92%);
+  padding: 0 0.08em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* the line a till prints between sections */
+.rule {
+  border: 0;
+  border-top: 1px dashed var(--line-strong);
+}
+
+/* a numbered step marker */
+.step {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.35rem;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--ink);
+  color: var(--on-ink);
+}
+
+/* a small tag: chain, dex, side */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  height: 1.5rem;
+  padding: 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--subtle);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
 @keyframes reveal {
   from {
     opacity: 0;
-    transform: translateY(14px);
-    filter: blur(8px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
     transform: none;
-    filter: none;
   }
 }
 .reveal {
-  animation: reveal 900ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: reveal 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
   animation-delay: var(--d, 0ms);
 }
 
@@ -158,43 +230,63 @@ body {
   gap: 0.45rem;
   min-height: 2.5rem;
   padding: 0 0.95rem;
-  border-radius: 999px;
+  border-radius: 8px;
+  border: 1px solid transparent;
   font-size: 14px;
-  font-weight: 550;
+  font-weight: 600;
   letter-spacing: -0.01em;
   white-space: nowrap;
   transition:
     background-color 120ms ease,
     border-color 120ms ease,
+    box-shadow 120ms ease,
     opacity 120ms ease,
     transform 80ms ease;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 .btn:active:not(:disabled) {
-  transform: scale(0.985);
+  transform: translateY(1px);
 }
 .btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
+/* the one thing to do next: highlighter yellow, inked edge, a hard little shadow like a key */
 .btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--key);
+  box-shadow: 0 2px 0 var(--key);
+}
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, #fff);
+}
+.btn-primary:active:not(:disabled) {
+  box-shadow: 0 1px 0 var(--key);
+}
+.btn-ink {
   background: var(--ink);
   color: var(--on-ink);
 }
-.btn-primary:hover:not(:disabled) {
+.btn-ink:hover:not(:disabled) {
   opacity: 0.86;
-}
-.btn-primary {
-  box-shadow: 0 6px 20px -8px color-mix(in srgb, var(--ink) 45%, transparent);
 }
 .btn-quiet {
   background: var(--surface);
   color: var(--ink);
-  border: 1px solid var(--line);
+  border-color: var(--line);
 }
 .btn-quiet:hover:not(:disabled) {
   background: var(--hover);
+  border-color: var(--line-strong);
+}
+.btn-ghost {
+  color: var(--muted);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--ink);
 }
 .btn-buy {
   background: var(--pos);
@@ -205,32 +297,76 @@ body {
   color: #fff;
 }
 
-.eyebrow {
-  font-size: 11px;
-  font-weight: 550;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
 .field {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  border: 1px solid var(--line);
-  background: var(--subtle);
-  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  border-radius: 10px;
   transition:
     border-color 120ms ease,
-    background-color 120ms ease;
+    box-shadow 120ms ease;
 }
 .field:focus-within {
   border-color: var(--ink);
-  background: var(--surface);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent);
 }
-/* the field's dark border already marks focus; the ring inside it is a second, clashing one */
+/* the field's border and halo already mark focus; the ring inside it is a second, clashing one */
 .field input:focus-visible {
   outline: none;
+}
+
+/* a printed receipt: paper, mono type, and a torn zigzag foot */
+.receipt {
+  --tooth: 8px;
+  position: relative;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  padding-bottom: calc(var(--tooth) + 0.5rem);
+  -webkit-mask:
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / calc(var(--tooth) * 2) 100%;
+  mask:
+    conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / calc(var(--tooth) * 2) 100%;
+}
+/* a mask cuts its own element's shadow off, so the shadow goes on a wrapper */
+.receipt-shadow {
+  filter: drop-shadow(0 1px 0 var(--line)) drop-shadow(0 14px 24px rgba(0, 0, 0, 0.14));
+}
+
+/* a rubber stamp across a receipt */
+.stamp {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  border: 3px double currentColor;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  transform: rotate(-8deg);
+  opacity: 0.88;
+}
+@keyframes stamp-in {
+  0% {
+    opacity: 0;
+    transform: rotate(-8deg) scale(2.2);
+  }
+  60% {
+    opacity: 0.95;
+    transform: rotate(-8deg) scale(0.94);
+  }
+  100% {
+    opacity: 0.88;
+    transform: rotate(-8deg) scale(1);
+  }
+}
+.stamp-in {
+  animation: stamp-in 420ms cubic-bezier(0.2, 0.9, 0.3, 1.1) both;
+  animation-delay: var(--d, 0ms);
 }
 }
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, ArrowUpRight, FastForward, Link2, Loader2, RotateCcw } from 'lucide-react';
+import { ArrowUpRight, Copy, FastForward, Link2, Loader2, RotateCcw } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
 import { useStored } from '../hooks/useStored';
 import { useReplay } from '../hooks/useReplay';
@@ -14,7 +14,7 @@ import { CHAINS } from '../lib/chains';
 import type { TraderReceipts } from '../lib/types';
 import { date, mcap, pct, price, short, span, usd } from '../lib/format';
 import { ROUTES, SITE_URL } from '../lib/site';
-import { shareLink } from '../lib/clipboard';
+import { copyText, shareLink } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import { Failure, Loading } from './States';
@@ -25,6 +25,7 @@ import { VideoExport } from './VideoExport';
 import { TokenImage } from './TokenImage';
 import { TradeList } from './TradeList';
 import { ChartStylePicker } from './ChartStylePicker';
+import { Trail } from './Trail';
 
 const PLAY_MS = 4_200;
 
@@ -64,86 +65,119 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
     if (res === 'copied') toast('Link copied.');
     else if (res === 'failed') toast('Couldn’t share. Copy the address bar instead.');
   };
+  const copyOwner = async () => toast((await copyText(r.owner)) ? 'Address copied.' : 'Couldn’t copy the address.');
 
   return (
-    <div className="reveal mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
-      <div className="mx-auto max-w-3xl">
-        <header className="flex flex-wrap items-center gap-2 sm:gap-3">
-          <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
-            <p className="eyebrow">Wallet · {token.chainName}</p>
-            <h1 className="num truncate text-[20px] font-semibold tracking-tight" title={r.owner}>
-              {short(r.owner)}
-            </h1>
-          </div>
-          <Link href={ROUTES.token(token.address)} className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
-            <ArrowLeft className="size-3.5" aria-hidden /> {token.symbol} traders
-          </Link>
+    <div className="reveal mx-auto max-w-6xl px-4 pb-16 pt-4 sm:px-6 sm:pt-6">
+      <Trail
+        crumbs={[
+          { step: 'Token', label: `$${token.symbol}`, href: ROUTES.token(token.address) },
+          { step: 'Wallet', label: short(r.owner), href: ROUTES.wallet(r.owner) },
+          { step: 'Replay', label: token.symbol },
+        ]}
+      />
+
+      <header className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-3">
+        <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
+          <p className="label">Wallet on {token.chainName}</p>
+          <h1 className="mono mt-1 truncate text-[22px] font-semibold tracking-tight sm:text-[26px]" title={r.owner}>
+            {short(r.owner)}
+          </h1>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={copyOwner} className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
+            <Copy className="size-3.5" aria-hidden /> Copy
+          </button>
+          {chain && (
+            <a href={chain.account(r.owner)} target="_blank" rel="noreferrer" className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
+              Explorer <ArrowUpRight className="size-3.5" aria-hidden />
+            </a>
+          )}
           <Link href={ROUTES.wallet(r.owner)} className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
             Other tokens
           </Link>
-          {chain && (
-            <a href={chain.account(r.owner)} target="_blank" rel="noreferrer" className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]" aria-label="Open the wallet in the explorer">
-              <span className="hidden sm:inline">Explorer</span> <ArrowUpRight className="size-3.5" aria-hidden />
-            </a>
-          )}
-        </header>
+        </div>
+      </header>
 
-        {/* the chart, where the wallet's trades replay, with the video right under it */}
-        <section className="panel mt-4 p-3 sm:p-4" aria-label="Replay">
-          <div className="flex min-h-9 items-center justify-between gap-3 px-1">
-            <Link href={ROUTES.token(token.address)} className="flex min-w-0 items-center gap-2">
-              <TokenImage src={token.image} symbol={token.symbol} className="size-7 text-xs" />
-              <span className="min-w-0">
-                <span className="block truncate text-[14px] font-semibold">{token.symbol}</span>
-                <span className="block truncate text-[12px] text-muted">
-                  {supply ? `MC ${mcap(token.mcapUsd)}` : price(token.priceUsd)} · all-time chart
+      {/* chart, receipt, trades: on phones the receipt comes straight after the chart */}
+      <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {/* the chart, where the wallet's trades replay */}
+        <section className="panel min-w-0 p-3 sm:p-4 lg:col-start-1 lg:row-start-1" aria-label="Replay">
+            <div className="flex min-h-10 items-center justify-between gap-3 px-1">
+              <Link href={ROUTES.token(token.address)} className="flex min-w-0 items-center gap-2.5 rounded-md hover:opacity-80">
+                <TokenImage src={token.image} symbol={token.symbol} className="size-8 text-xs" />
+                <span className="min-w-0">
+                  <span className="block truncate text-[15px] font-semibold">{token.symbol}</span>
+                  <span className="mono block truncate text-[11.5px] text-muted">{supply ? `MC ${mcap(token.mcapUsd)}` : price(token.priceUsd)} · all-time</span>
                 </span>
-              </span>
-            </Link>
-            <div className="flex items-center gap-1">
-              <p className={cx('num display text-[26px]', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
-              <ChartStylePicker />
+              </Link>
+              <div className="flex items-center gap-1">
+                <div className="text-right">
+                  <p className="label text-[9.5px]">{done ? 'P&L' : 'Running P&L'}</p>
+                  <p className={cx('num display text-[24px] sm:text-[28px]', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
+                </div>
+                <ChartStylePicker />
+              </div>
             </div>
-          </div>
-          <div className="relative mt-3">
-            <ReplayChart candles={chart.candles} step={chart.step} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
-            {/* the time axis: the chart runs from launch to now */}
-            <div className="num mt-1 flex justify-between pr-14 text-[11px] text-muted sm:pr-16">
-              <span>Launched {date(token.createdAt ?? chart.candles[0]?.[0] ?? from)}</span>
-              <span>Now</span>
+            <div className="relative mt-3">
+              <ReplayChart className="md:aspect-[16/9] lg:aspect-[16/8]" candles={chart.candles} step={chart.step} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
+              {/* the time axis: the chart runs from launch to now */}
+              <div className="mono mt-1 flex justify-between pr-14 text-[10.5px] text-muted sm:pr-16">
+                <span>Launched {date(token.createdAt ?? chart.candles[0]?.[0] ?? from)}</span>
+                <span>Now</span>
+              </div>
             </div>
-          </div>
 
-          <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2" role="status">
-            {done ? (
-              <VideoExport video={video} fileBase={fileBase} className="btn-primary h-11 text-[15px]" />
-            ) : (
-              <button type="button" onClick={replay.skip} className="btn btn-quiet h-11">
-                <Loader2 className="size-4 animate-spin" aria-hidden /> Replaying… <FastForward className="size-4" aria-hidden />
-                <span className="sr-only">Skip the replay</span>
+            {/* the transport: how far the replay is, and the buttons that drive it */}
+            <div className="mt-3 flex items-center gap-3 border-t border-dashed border-line-strong px-1 pt-3" role="status">
+              {done ? (
+                <button type="button" onClick={replay.play} className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
+                  <RotateCcw className="size-3.5" aria-hidden /> Replay
+                </button>
+              ) : (
+                <button type="button" onClick={replay.skip} className="btn btn-quiet h-9 min-h-0 px-3 text-[13px]">
+                  <FastForward className="size-3.5" aria-hidden /> Skip
+                </button>
+              )}
+              <div className="h-1 flex-1 overflow-hidden rounded-full bg-subtle" aria-hidden>
+                <div className="h-full bg-ink" style={{ width: `${replay.t * 100}%` }} />
+              </div>
+              <span className="mono w-10 text-right text-[11px] text-muted">{done ? 'done' : `${Math.round(replay.t * 100)}%`}</span>
+              <button type="button" onClick={share} className="btn btn-ghost h-9 min-h-0 px-2.5" aria-label="Share link" title="Share link">
+                <Link2 className="size-4" aria-hidden />
               </button>
-            )}
-            <button type="button" onClick={replay.play} disabled={!done} className="btn btn-quiet h-11 px-3.5" aria-label="Replay">
-              <RotateCcw className="size-4" aria-hidden />
-            </button>
-            <button type="button" onClick={share} className="btn btn-quiet h-11 px-3.5" aria-label="Share">
-              <Link2 className="size-4" aria-hidden />
-            </button>
-          </div>
+            </div>
         </section>
 
-        {done && (
-          <section className="panel rise mt-4 p-4 sm:p-5" aria-label="Result">
-            <ResultCard kicker={`${short(r.owner)} on ${token.symbol}`} pnl={usd(p.pnl, { signed: true })} roi={p.roi === null ? 'no buys seen' : pct(p.roi, { signed: true })} tone={toneOf(p.pnl)} rank={rank} stats={stats} />
-          </section>
-        )}
+        {/* the receipt prints beside the chart and stays in view while the page scrolls */}
+        <aside className="lg:sticky lg:top-20 lg:col-start-2 lg:row-span-2 lg:row-start-1" aria-label="Result">
+          <ResultCard
+            kicker={`${short(r.owner)} on $${token.symbol}`}
+            sub={token.chainName}
+            pnl={usd(done ? p.pnl : running, { signed: true })}
+            roi={p.roi === null ? 'no buys seen' : pct(p.roi, { signed: true })}
+            tone={done ? toneOf(p.pnl) : runTone}
+            rank={rank}
+            stats={stats}
+            printing={!done}
+          >
+            <VideoExport video={video} fileBase={fileBase} className="btn-primary h-12 w-full text-[15px]" label="Make the video" />
+            <p className="mt-2 text-center text-[10.5px] text-muted">MP4 · SQUARE, PORTRAIT OR WIDE</p>
+          </ResultCard>
+          {!done && (
+            <button type="button" onClick={replay.skip} className="btn btn-ghost mt-3 h-9 w-full min-h-0 text-[13px]">
+              <Loader2 className="size-3.5 animate-spin" aria-hidden /> Printing the receipt… skip
+            </button>
+          )}
+        </aside>
 
-        {done && <TradeList r={r} />}
-
-        <details className="group mt-3 px-1 text-[12px] leading-relaxed text-faint">
-          <summary className="cursor-pointer list-none select-none hover:text-muted">How it’s counted</summary>
-          <p className="mt-1.5">{sourceNote(r)}</p>
-        </details>
+        <div className="min-w-0 lg:col-start-1 lg:row-start-2">
+          {done && <TradeList r={r} />}
+          <details className="group mt-3 px-1 text-[12px] leading-relaxed text-muted">
+            <summary className="label cursor-pointer list-none select-none hover:text-ink">+ How it’s counted</summary>
+            <p className="mt-1.5">{sourceNote(r)}</p>
+          </details>
+        </div>
       </div>
     </div>
   );
