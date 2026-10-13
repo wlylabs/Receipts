@@ -1,5 +1,5 @@
 import { CHAINS } from './chains';
-import type { BoardRow, DsPair, GtTrade, PositionCalc, TokenInfo, Trade, Window } from './types';
+import type { BoardRow, DsPair, GtTrade, Move, PositionCalc, TokenInfo, Trade, Window } from './types';
 
 /* ---------- addresses ---------- */
 
@@ -48,6 +48,20 @@ export function toTokenInfo(p: DsPair): TokenInfo {
   };
 }
 
+/**
+ * The pool to read a token from: the deepest one whose price agrees with the others. Pools with a
+ * broken or gamed price can report millions in liquidity (one pair of an exotic quote token, its
+ * value made up), so a pool priced far off the median of the token's pools is passed over.
+ */
+export function bestPair(pairs: readonly DsPair[]): DsPair | null {
+  const priced = pairs.filter((p) => Number(p.priceUsd) > 0);
+  const prices = priced.map((p) => Number(p.priceUsd)).sort((a, b) => a - b);
+  const mid = prices.length ? prices[Math.floor((prices.length - 1) / 2)]! : 0;
+  const sane = priced.filter((p) => Number(p.priceUsd) / mid < 3 && mid / Number(p.priceUsd) < 3);
+  const pool = sane.length ? sane : pairs;
+  return pool.reduce<DsPair | null>((a, p) => (!a || (p.liquidity?.usd ?? 0) > (a.liquidity?.usd ?? 0) ? p : a), null);
+}
+
 /** A pool's trades as buys and sells of `token`, oldest first. Swaps not touching it are dropped. */
 export function toTrades(raw: readonly GtTrade[], token: string): Trade[] {
   const out: Trade[] = [];
@@ -91,12 +105,39 @@ export function priceAt(series: readonly [number, number][], ts: number, live: n
   return series[lo]![1];
 }
 
-/** Balance changes read off the chain as trades, priced from the chart. */
-export function movesToTrades(moves: readonly { tx: string; ts: number; delta: number }[], owner: string, series: readonly [number, number][], live: number): Trade[] {
+/** An exact price this far off the chart's is a misread (a multi-hop route, a bundle): the chart's is kept. */
+const MAX_OFF = 10;
+
+/**
+ * Balance changes read off the chain as trades. A swap is valued at what really went the other
+ * way (stablecoins at a dollar, the native coin at its price then), else at what the DEX feed
+ * says the same transaction was worth, else at the chart's candle. A transfer is valued at the
+ * candle: it is held at that cost and carries no profit.
+ */
+export function movesToTrades(
+  moves: readonly Move[],
+  owner: string,
+  series: readonly [number, number][],
+  live: number,
+  opts: { nativeAt?: ((ts: number) => number | null) | null; feed?: ReadonlyMap<string, number> } = {},
+): Trade[] {
   return moves.map((m) => {
     const tokens = Math.abs(m.delta);
-    const priceUsd = priceAt(series, m.ts, live);
-    return { tx: m.tx, ts: m.ts, trader: owner, side: m.delta > 0 ? 'buy' : 'sell', tokens, usd: tokens * priceUsd, priceUsd };
+    const chart = priceAt(series, m.ts, live);
+    const nat = opts.nativeAt?.(m.ts) ?? null;
+    const side = m.delta > 0 ? 'buy' : 'sell';
+    const feeUsd = m.fee && nat ? m.fee * nat : 0;
+    let usd = tokens * chart;
+    let priced: Trade['priced'] = 'candle';
+    if (m.kind === 'swap') {
+      const native = Math.abs(m.native ?? 0);
+      const paid = Math.abs(m.stable ?? 0) + (native > 1e-9 ? (nat === null ? NaN : native * nat) : 0);
+      const fed = opts.feed?.get(m.tx);
+      const fits = (v: number) => v > 0 && Number.isFinite(v) && (!(chart > 0) || (v / tokens < chart * MAX_OFF && v / tokens > chart / MAX_OFF));
+      if (fits(paid)) [usd, priced] = [paid, 'exact'];
+      else if (fed !== undefined && fits(fed)) [usd, priced] = [fed, 'exact'];
+    }
+    return { tx: m.tx, ts: m.ts, trader: owner, side, tokens, usd, priceUsd: tokens ? usd / tokens : chart, kind: m.kind, priced, ...(feeUsd ? { feeUsd } : {}) };
   });
 }
 
@@ -119,6 +160,11 @@ export function peakAfter(highs: readonly [number, number][], trades: readonly T
   };
 }
 
+/**
+ * A wallet's P&L on its trades, at the average cost of what it bought. Tokens received for
+ * nothing join the bag at what they were worth then; tokens sent away leave it at cost, with no
+ * profit; fees come off the P&L.
+ */
 export function position(trades: readonly Trade[], priceUsd: number, peak?: (ts: number) => number): PositionCalc {
   let usdIn = 0;
   let usdOut = 0;
@@ -127,8 +173,18 @@ export function position(trades: readonly Trade[], priceUsd: number, peak?: (ts:
   let buys = 0;
   let sells = 0;
   let missedUsd = 0;
+  let received = 0;
+  let receivedUsd = 0;
+  let sent = 0;
+  let feesUsd = 0;
   for (const t of trades) {
-    if (t.side === 'buy') {
+    feesUsd += t.feeUsd ?? 0;
+    if (t.kind === 'transfer') {
+      if (t.side === 'buy') {
+        received += t.tokens;
+        receivedUsd += t.usd;
+      } else sent += t.tokens;
+    } else if (t.side === 'buy') {
       buys++;
       usdIn += t.usd;
       tokensIn += t.tokens;
@@ -140,13 +196,16 @@ export function position(trades: readonly Trade[], priceUsd: number, peak?: (ts:
       if (top > t.priceUsd) missedUsd += t.tokens * (top - t.priceUsd);
     }
   }
-  const avgBuy = tokensIn > 0 ? usdIn / tokensIn : 0;
+  const held = tokensIn + received;
+  const avgBuy = held > 0 ? (usdIn + receivedUsd) / held : 0;
   const avgSell = tokensOut > 0 ? usdOut / tokensOut : 0;
-  const matched = Math.min(tokensIn, tokensOut);
-  const open = tokensIn - matched;
+  const matched = Math.min(held, tokensOut);
+  const gone = Math.min(sent, held - matched);
+  const open = held - matched - gone;
   const realized = matched * (avgSell - avgBuy);
   const unrealized = open * (priceUsd - avgBuy);
-  const pnl = realized + unrealized;
+  const pnl = realized + unrealized - feesUsd;
+  const cost = usdIn + receivedUsd - gone * avgBuy;
   return {
     buys,
     sells,
@@ -159,8 +218,11 @@ export function position(trades: readonly Trade[], priceUsd: number, peak?: (ts:
     realized,
     unrealized,
     pnl,
-    roi: usdIn > 0 ? pnl / usdIn : null,
+    roi: cost > 0 && usdIn > 0 ? pnl / cost : null,
     unknownSold: tokensOut - matched,
+    sent,
+    received,
+    feesUsd,
     missedUsd,
     firstTs: trades[0]?.ts ?? 0,
     lastTs: trades.at(-1)?.ts ?? 0,

@@ -41,6 +41,35 @@ export interface Trade {
   tokens: number;
   usd: number;
   priceUsd: number;
+  /**
+   * A swap, or tokens sent or received with nothing paid (a gift, an airdrop, a move between the
+   * wallet's own accounts): those carry no profit, so a send leaves at cost. A swap when left out.
+   */
+  kind?: 'swap' | 'transfer';
+  /** Whether the USD comes from what was really paid or received, or from the chart's candle. */
+  priced?: 'exact' | 'candle';
+  /** Network fees paid on the trade, in USD. */
+  feeUsd?: number;
+}
+
+/** A change in the wallet's balance of the token, as read off the chain. */
+export interface Move {
+  tx: string;
+  ts: number;
+  /** Tokens in (positive) or out (negative). */
+  delta: number;
+  kind: 'swap' | 'transfer';
+  /** What went the other way in the same transaction, in the chain's native coin and in USD stablecoins. */
+  native?: number;
+  stable?: number;
+  /** The network fee the wallet paid, in the native coin. */
+  fee?: number;
+}
+
+/** A wallet's moves of one token, and whether they reach back to its first one. */
+export interface Moves {
+  moves: Move[];
+  complete: boolean;
 }
 
 export interface TokenInfo {
@@ -90,6 +119,11 @@ export interface PositionCalc {
   roi: number | null;
   /** Tokens sold that were bought before the window. */
   unknownSold: number;
+  /** Tokens sent away (not sold), and tokens received with nothing paid. */
+  sent: number;
+  received: number;
+  /** Network fees paid, in USD, where the chain says; already taken off the P&L. */
+  feesUsd: number;
   /** What the tokens sold would have fetched at the highest price after each sell. */
   missedUsd: number;
   firstTs: number;
@@ -132,14 +166,19 @@ export interface TokenReceipts {
   board: BoardRow[];
 }
 
+export type TradeRow = [number, 'buy' | 'sell', number, number, number, string, ('swap' | 'transfer')?, ('exact' | 'candle')?, number?];
+
 /** GET /api/trader/[address]?ca= */
 export interface TraderReceipts {
   kind: 'trader';
   owner: string;
   token: TokenInfo;
   position: PositionCalc;
-  /** The wallet's trades, oldest first, as [ts, side, tokens, usd, priceUsd, tx]. */
-  trades: [number, 'buy' | 'sell', number, number, number, string][];
+  /**
+   * The wallet's trades, oldest first, as [ts, side, tokens, usd, priceUsd, tx, kind, priced,
+   * feeUsd]; the last three may be missing.
+   */
+  trades: TradeRow[];
   series: [number, number][];
   /** The same stretch as OHLC candles, oldest first. */
   candles: Candle[];
@@ -178,5 +217,5 @@ export interface Resolved {
 
 export interface ApiError {
   error: string;
-  code: 'invalid' | 'not-found' | 'no-trades' | 'unsupported' | 'upstream';
+  code: 'invalid' | 'not-found' | 'no-trades' | 'unsupported' | 'upstream' | 'busy';
 }

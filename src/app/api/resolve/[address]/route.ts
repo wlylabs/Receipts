@@ -1,11 +1,13 @@
 import { findPair, onOtherChain } from '../../../../lib/upstream';
 import { SUPPORTED } from '../../../../lib/chains';
 import { cleanAddress, isAddress, isWallet } from '../../../../lib/receipts';
-import { fail, ok } from '../../../../lib/respond';
+import { fail, ok, tooMany } from '../../../../lib/respond';
 import type { Resolved } from '../../../../lib/types';
 
 /** Whether a pasted address is a token (it has a DEX pair) or a wallet. */
-export async function GET(_req: Request, ctx: { params: Promise<{ address: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ address: string }> }) {
+  const limited = tooMany(req, 'resolve', 40);
+  if (limited) return limited;
   const address = cleanAddress(decodeURIComponent((await ctx.params).address));
   if (!isAddress(address)) return fail('invalid', 'That doesn’t look like a Solana or EVM address.');
   try {

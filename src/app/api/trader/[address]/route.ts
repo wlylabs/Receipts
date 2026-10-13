@@ -2,19 +2,23 @@ import type { NextRequest } from 'next/server';
 import { loadToken } from '../../../../lib/load';
 import { cleanAddress, groupByTrader, isWallet, leaderboard, movesToTrades, peakAfter, placement, position, windowOf } from '../../../../lib/receipts';
 import { tokenMoves as solanaMoves } from '../../../../lib/solana';
-import { tokenMoves as blockscoutMoves } from '../../../../lib/blockscout';
-import { fail, ok } from '../../../../lib/respond';
-import type { Trade, TraderReceipts } from '../../../../lib/types';
+import { tokenMoves as evmMoves } from '../../../../lib/evm';
+import { nativeUsd } from '../../../../lib/quotes';
+import { fail, ok, tooMany } from '../../../../lib/respond';
+import type { Trade, TradeRow, TraderReceipts } from '../../../../lib/types';
 
 /** Reading a history from the public Solana endpoint is slow; give it time. */
 export const maxDuration = 60;
 
 /**
  * One wallet's trades and P&L on one token. The chain itself is read where a free source has it
- * (Solana RPC, Blockscout); elsewhere, and when that fails, the token's latest DEX trades.
+ * (Solana RPC, an EVM explorer), each swap valued at what was really paid; elsewhere, and when that
+ * fails, the token's latest DEX trades.
  */
 export async function GET(req: NextRequest, ctx: { params: Promise<{ address: string }> }) {
-  const { address } = await ctx.params;
+  const limited = tooMany(req, 'trader', 12);
+  if (limited) return limited;
+  const address = cleanAddress(decodeURIComponent((await ctx.params).address));
   const ca = cleanAddress(req.nextUrl.searchParams.get('ca') ?? '');
   if (!isWallet(address)) return fail('invalid', 'That is not a wallet address.');
   if (!ca) return fail('invalid', 'Pick the token the wallet traded, too.');
@@ -28,12 +32,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ address: st
     let mine: Trade[] = [];
     let source: TraderReceipts['source'] = 'feed';
     let complete = false;
-    const onChain = await (token.chain === 'solana' ? solanaMoves(address, token.address) : blockscoutMoves(token.chain, address, token.address)).catch((e: unknown) => {
+    const onChain = await (token.chain === 'solana' ? solanaMoves(address, token.address) : evmMoves(token.chain, address, token.address)).catch((e: unknown) => {
       console.error('chain history', address, token.address, e);
       return null;
     });
     if (onChain && onChain.moves.length) {
-      mine = movesToTrades(onChain.moves, key, series, token.priceUsd);
+      const { moves } = onChain;
+      const nativeAt = await nativeUsd(token.chain, moves[0]!.ts, moves.at(-1)!.ts);
+      // the feed's USD value of the same transaction, for swaps whose other side was not read
+      const feed = new Map(trades.map((t) => [t.tx, t.usd]));
+      mine = movesToTrades(moves, key, series, token.priceUsd, { nativeAt, feed });
       source = 'chain';
       complete = onChain.complete;
     } else {
@@ -48,7 +56,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ address: st
       owner: address,
       token,
       position: pos,
-      trades: mine.map((t) => [t.ts, t.side, t.tokens, t.usd, t.priceUsd, t.tx]),
+      trades: mine.map((t): TradeRow => [t.ts, t.side, t.tokens, t.usd, t.priceUsd, t.tx, t.kind ?? 'swap', t.priced ?? 'exact', t.feeUsd ?? 0]),
       series,
       candles,
       candle,

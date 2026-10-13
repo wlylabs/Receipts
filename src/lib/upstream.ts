@@ -1,6 +1,7 @@
 import 'server-only';
 import { CHAINS } from './chains';
-import { sameAddress } from './receipts';
+import { pacer } from './throttle';
+import { bestPair, sameAddress } from './receipts';
 import type { DsPair, GtTrade } from './types';
 
 /**
@@ -11,44 +12,53 @@ import type { DsPair, GtTrade } from './types';
 const DS = 'https://api.dexscreener.com';
 const GT = process.env.GECKOTERMINAL_API ?? 'https://api.geckoterminal.com/api/v2';
 const TTL = 60;
+/** GeckoTerminal's free API allows about 30 calls a minute; DexScreener's pair calls 300. */
+const gtPace = pacer(25);
+const dsPace = pacer(250);
 
 export class NotFound extends Error {}
 
-async function get<T>(url: string, headers: Record<string, string> = {}): Promise<T> {
-  const res = await fetch(url, {
-    headers: { accept: 'application/json', 'user-agent': 'Receipts (+https://github.com/wlylabs/receipts)', ...headers },
-    next: { revalidate: TTL },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (res.status === 404) throw new NotFound(url);
-  if (!res.ok) throw new Error(`${res.status} ${url}`);
-  return (await res.json()) as T;
+async function get<T>(url: string, headers: Record<string, string> = {}, pace?: () => Promise<void>): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    await pace?.();
+    const res = await fetch(url, {
+      headers: { accept: 'application/json', 'user-agent': 'Receipts (+https://github.com/wlylabs/receipts)', ...headers },
+      next: { revalidate: TTL },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.status === 404) throw new NotFound(url);
+    // asked too often: wait what the source says (a few seconds at most) and ask once more
+    if (res.status === 429 && attempt === 0) {
+      await new Promise((r) => setTimeout(r, Math.min(5, Number(res.headers.get('retry-after')) || 2) * 1000));
+      continue;
+    }
+    if (!res.ok) throw new Error(`${res.status} ${url}`);
+    return (await res.json()) as T;
+  }
 }
 
-const gt = <T>(path: string) => get<T>(`${GT}/${path}`, { accept: 'application/json;version=20230302' });
+const gt = <T>(path: string) => get<T>(`${GT}/${path}`, { accept: 'application/json;version=20230302' }, gtPace);
+const ds = <T>(url: string) => get<T>(url, {}, dsPace);
 
 /**
  * The token's deepest pool on a chain Receipts plays, or null. The address may also be a pair
  * (people paste dexscreener.com links), which the search finds.
  */
 export async function findPair(address: string): Promise<{ pair: DsPair; tokenAddress: string } | null> {
-  const byToken = (await get<{ pairs: DsPair[] | null }>(`${DS}/latest/dex/tokens/${address}`)).pairs ?? [];
+  const byToken = (await ds<{ pairs: DsPair[] | null }>(`${DS}/latest/dex/tokens/${address}`)).pairs ?? [];
   const asBase = byToken.filter((p) => CHAINS[p.chainId] && sameAddress(p.baseToken.address, address));
-  let best = deepest(asBase);
+  let best = bestPair(asBase);
   if (!best) {
-    const found = (await get<{ pairs: DsPair[] | null }>(`${DS}/latest/dex/search?q=${encodeURIComponent(address)}`)).pairs ?? [];
-    best = deepest(found.filter((p) => CHAINS[p.chainId] && sameAddress(p.pairAddress, address)));
+    const found = (await ds<{ pairs: DsPair[] | null }>(`${DS}/latest/dex/search?q=${encodeURIComponent(address)}`)).pairs ?? [];
+    best = bestPair(found.filter((p) => CHAINS[p.chainId] && sameAddress(p.pairAddress, address)));
   }
   return best ? { pair: best, tokenAddress: best.baseToken.address } : null;
 }
 
-function deepest(pairs: DsPair[]): DsPair | null {
-  return pairs.reduce<DsPair | null>((a, p) => (!a || (p.liquidity?.usd ?? 0) > (a.liquidity?.usd ?? 0) ? p : a), null);
-}
 
 /** Whether the address has pairs on chains Receipts does not play. */
 export async function onOtherChain(address: string): Promise<string | null> {
-  const pairs = (await get<{ pairs: DsPair[] | null }>(`${DS}/latest/dex/tokens/${address}`)).pairs ?? [];
+  const pairs = (await ds<{ pairs: DsPair[] | null }>(`${DS}/latest/dex/tokens/${address}`)).pairs ?? [];
   return pairs.find((p) => !CHAINS[p.chainId])?.chainId ?? null;
 }
 
@@ -81,12 +91,14 @@ export async function poolTrades(chain: string, pool: string): Promise<GtTrade[]
   return (await gt<{ data?: GtTrade[] }>(`networks/${net}/pools/${pool}/trades`)).data ?? [];
 }
 
-/** Pairs for up to 30 tokens on one chain at once. */
+/** Pairs for any number of tokens on one chain, asked 30 at a time, a few batches at once. */
 export async function pairsFor(chain: string, addresses: string[]): Promise<DsPair[]> {
+  const batches: string[][] = [];
+  for (let i = 0; i < addresses.length; i += 30) batches.push(addresses.slice(i, i + 30));
   const out: DsPair[] = [];
-  for (let i = 0; i < addresses.length; i += 30) {
-    const list = addresses.slice(i, i + 30).join(',');
-    out.push(...((await get<DsPair[] | null>(`${DS}/tokens/v1/${chain}/${list}`)) ?? []));
+  for (let i = 0; i < batches.length; i += 4) {
+    const lists = await Promise.all(batches.slice(i, i + 4).map((b) => ds<DsPair[] | null>(`${DS}/tokens/v1/${chain}/${b.join(',')}`).catch(() => null)));
+    for (const l of lists) out.push(...(l ?? []));
   }
   return out;
 }
