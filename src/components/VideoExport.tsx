@@ -1,12 +1,14 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clapperboard, Download, Loader2, Play, Volume2, VolumeX } from 'lucide-react';
 import { drawFrame, FORMATS, LENGTHS, soundCues, timingOf, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
 import { saveFile } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import { Sheet } from './Sheet';
+import { useChartStyle } from '../hooks/useChartStyle';
+import { ChartStylePicker } from './ChartStylePicker';
 
 /** A button that opens the video maker: pick a size and a length, watch it, download it. */
 export function VideoExport({ video, fileBase, className, title }: { video: ReplayVideo; fileBase: string; className?: string; title?: string }) {
@@ -31,7 +33,10 @@ export function VideoSheet({ video, fileBase, open, onClose, title = 'Make a vid
   );
 }
 
-function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
+function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string }) {
+  // the video draws its candles the way the page's charts do
+  const [style] = useChartStyle();
+  const video = useMemo(() => ({ ...run, candleStyle: style }), [run, style]);
   const [format, setFormat] = useState<VideoFormat>('square');
   const [length, setLength] = useState<VideoLength>('short');
   const [sound, setSound] = useState(true);
@@ -126,6 +131,9 @@ function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
           );
         })}
       </div>
+
+      <p className="eyebrow mt-3">Candles</p>
+      <ChartStylePicker inline className="mt-1.5" />
 
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1">

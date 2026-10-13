@@ -23,6 +23,7 @@ import { Failure, Loading } from './States';
 import { TokenImage } from './TokenImage';
 import { ReplayChart } from './ReplayChart';
 import { VideoExport, VideoSheet } from './VideoExport';
+import { ChartStylePicker } from './ChartStylePicker';
 
 /** Wallets shown on each side of the board. */
 const SIDE = 3;
@@ -117,9 +118,12 @@ function TokenPage({ r }: { r: TokenReceipts }) {
           <h2 id="chart-title" className="eyebrow">
             Since launch
           </h2>
-          <p className="num text-[11.5px] text-muted">
-            {chart.candles.length} × {r.candle}
-          </p>
+          <div className="flex items-center gap-1">
+            <p className="num text-[11.5px] text-muted">
+              {chart.candles.length} × {r.candle}
+            </p>
+            <ChartStylePicker className="-my-1.5" />
+          </div>
         </div>
         <ReplayChart className="md:aspect-[3/1] lg:aspect-[4/1]" candles={chart.candles} step={chart.step} scale={supply || 1} label={supply ? mcap : price} tone={token.change24h === null ? null : token.change24h >= 0 ? 'pos' : 'neg'} />
         <div className="num mt-1 flex justify-between pr-14 text-[11px] text-muted sm:pr-16">

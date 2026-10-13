@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bucket, candleAt, mergeMarkers, logTicks, range, stepOf, toCandles, upTo, type Candle } from './candles';
+import { bucket, candleAt, mergeMarkers, logTicks, range, stepOf, toCandles, upTo, type Candle, heikinAshi } from './candles';
 
 const five = (n: number): Candle[] => Array.from({ length: n }, (_, i): Candle => [i * 300, 1 + i, 2 + i, 0.5 + i, 1.5 + i]);
 
@@ -73,5 +73,27 @@ describe('candles', () => {
     const k = five(10);
     const m = (ts: number) => ({ ts, price: 1, kind: 'buy' as const });
     expect(mergeMarkers([m(0), m(600), m(900), m(2400)], k, 300)).toHaveLength(2);
+  });
+});
+
+describe('heikinAshi', () => {
+  it('smooths each candle with the one before', () => {
+    const ha = heikinAshi([
+      [0, 10, 14, 8, 12],
+      [60, 12, 16, 11, 15],
+    ]);
+    expect(ha[0]).toEqual([0, 11, 14, 8, 11]);
+    // open: the middle of the last body; close: the average price; wicks reach the further out
+    expect(ha[1]).toEqual([60, 11, 16, 11, 13.5]);
+  });
+  it('keeps every high at or above its body and every low at or below it', () => {
+    const ha = heikinAshi([
+      [0, 10, 10.5, 9.5, 10],
+      [60, 30, 31, 29, 30],
+    ]);
+    for (const [, o, h, l, c] of ha) {
+      expect(h).toBeGreaterThanOrEqual(Math.max(o, c));
+      expect(l).toBeLessThanOrEqual(Math.min(o, c));
+    }
   });
 });

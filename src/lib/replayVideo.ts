@@ -1,6 +1,7 @@
 import type { Marker } from '../components/ReplayChart';
 import { renderSound, SAMPLE_RATE, tickStep, type Cue } from './videoSound';
 import { X_LIGHT } from './palette';
+import { COLORS, DEFAULT_STYLE, shape, type ChartStyle } from './chartStyle';
 import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './candles';
 
 /**
@@ -104,6 +105,8 @@ export interface ReplayVideo {
   scale: number;
   /** Run the candles at a steady pace, the video as long as the run, instead of fitting the length's fixed seconds. */
   paced?: boolean;
+  /** How the candles are drawn; plain green and red candles when left out. */
+  candleStyle?: ChartStyle;
   /** Formats an axis value (already scaled). */
   label: (n: number) => string;
   date: (ts: number) => string;
@@ -476,7 +479,8 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.scale(z, z);
     g.translate(-fx, -fy);
   }
-  drawCandles(g, shown, v.step, geo.X, geo.Y, { up: POS, down: NEG, body: 0.68 });
+  const style = v.candleStyle ?? DEFAULT_STYLE;
+  drawCandles(g, shape(shown, style.kind), v.step, geo.X, geo.Y, { up: COLORS[style.colors].videoUp, down: COLORS[style.colors].videoDown, body: 0.68 });
 
   // trades pop as the playhead reaches them, buys under their candle and sells over it
   if (playing) {

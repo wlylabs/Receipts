@@ -171,3 +171,20 @@ export function mergeMarkers(markers: readonly Marker[], candles: readonly Candl
     };
   });
 }
+
+/**
+ * Heikin Ashi: each candle smoothed with the one before, so a run reads as one colour and its
+ * noise drops out. Close is the candle's average price, open the middle of the last smoothed
+ * body, and the wicks reach whichever is further out. For drawing only: its prices are not ones
+ * anybody traded at.
+ */
+export function heikinAshi(candles: readonly Candle[]): Candle[] {
+  const out: Candle[] = [];
+  for (const [ts, o, h, l, c] of candles) {
+    const prev = out.at(-1);
+    const close = (o + h + l + c) / 4;
+    const open = prev ? (prev[1] + prev[4]) / 2 : (o + c) / 2;
+    out.push([ts, open, Math.max(h, open, close), Math.min(l, open, close), close]);
+  }
+  return out;
+}

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { bucket, candleAt, logTicks, range, upTo, type Candle } from '../lib/candles';
 import { cx } from '../lib/cx';
+import { COLORS, shape } from '../lib/chartStyle';
+import { useChartStyle } from '../hooks/useChartStyle';
 
 export interface Marker {
   ts: number;
@@ -61,6 +63,7 @@ export function ReplayChart({
 }) {
   // the plot's width on screen, so candles never get thinner than MIN_PX
   const plot = useRef<HTMLDivElement>(null);
+  const [style] = useChartStyle();
   const [px, setPx] = useState(0);
   const [tall, setTall] = useState(0);
   useEffect(() => {
@@ -96,6 +99,9 @@ export function ReplayChart({
   const runTo = to ?? geo.t1;
   const playhead = head === undefined ? runTo : Math.min(runTo, Math.max(runFrom, head));
   const shown = upTo(candles, step, playhead);
+  // drawn in the picked shape; the price tag keeps the real last price
+  const drawn = shape(shown, style.kind);
+  const palette = COLORS[style.colors];
   const live = head !== undefined && head < runTo;
   const color = tone === 'pos' ? 'var(--pos)' : tone === 'neg' ? 'var(--neg)' : 'var(--ink)';
   const now = shown.at(-1)?.[4] ?? candles[0]![4];
@@ -116,13 +122,13 @@ export function ReplayChart({
           {geo.ticks.map((p) => (
             <line key={p} x1="0" x2={VW} y1={geo.y(p)} y2={geo.y(p)} stroke="var(--line)" vectorEffect="non-scaling-stroke" />
           ))}
-          {shown.map(([ts, o, h, l, c]) => {
+          {drawn.map(([ts, o, h, l, c]) => {
             const up = c >= o;
             const cx0 = geo.x(ts + step / 2);
             const top = geo.y(Math.max(o, c));
             const bottom = geo.y(Math.min(o, c));
             return (
-              <g key={ts} stroke={up ? 'var(--pos)' : 'var(--neg)'} fill={up ? 'var(--pos)' : 'var(--neg)'}>
+              <g key={ts} stroke={up ? palette.up : palette.down} fill={up ? palette.up : palette.down}>
                 <line x1={cx0} x2={cx0} y1={geo.y(h)} y2={geo.y(l)} strokeWidth="1.25" vectorEffect="non-scaling-stroke" />
                 <rect x={cx0 - (slot * 0.7) / 2} y={top} width={Math.max(0.5, slot * 0.7)} height={Math.max(1.5, bottom - top)} stroke="none" />
               </g>

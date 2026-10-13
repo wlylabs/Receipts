@@ -24,6 +24,7 @@ import { ResultCard } from './ResultCard';
 import { VideoExport } from './VideoExport';
 import { TokenImage } from './TokenImage';
 import { TradeList } from './TradeList';
+import { ChartStylePicker } from './ChartStylePicker';
 
 const PLAY_MS = 4_200;
 
@@ -99,7 +100,10 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
                 </span>
               </span>
             </Link>
-            <p className={cx('num display text-[26px]', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
+            <div className="flex items-center gap-1">
+              <p className={cx('num display text-[26px]', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
+              <ChartStylePicker />
+            </div>
           </div>
           <div className="relative mt-3">
             <ReplayChart candles={chart.candles} step={chart.step} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
