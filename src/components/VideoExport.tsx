@@ -149,7 +149,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
                 onClick={() => setLength(l)}
                 className={cx('h-9 flex-1 rounded-md px-2 text-[12.5px] font-medium', l === length ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
               >
-                {LENGTHS[l].label} <span className="text-muted">· {Math.round(timingOf(l, video).seconds)} s{LENGTHS[l].note}</span>
+                {LENGTHS[l].label} <span className="text-muted">· {Math.round(timingOf(l, video).seconds)} s</span>
               </button>
             ))}
           </div>

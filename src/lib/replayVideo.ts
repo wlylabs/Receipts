@@ -32,9 +32,9 @@ interface Timing {
   play: number;
 }
 
-export const LENGTHS: Record<VideoLength, Timing & { label: string; note: string }> = {
-  short: { seconds: 9, hook: 0.5, play: 5.6, label: 'Short', note: '' },
-  story: { seconds: 18, hook: 0.6, play: 13, label: 'Story', note: ', the run told in its big moments' },
+export const LENGTHS: Record<VideoLength, Timing & { label: string }> = {
+  short: { seconds: 9, hook: 0.5, play: 5.6, label: 'Short' },
+  story: { seconds: 18, hook: 0.6, play: 13, label: 'Story' },
 };
 
 /**

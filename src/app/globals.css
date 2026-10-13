@@ -25,7 +25,6 @@
   --neg: #e5322d;
   --neg-wash: #fdeeee;
   --on-ink: #ffffff;
-  --ring: #2563eb;
   --glow: rgba(12, 12, 14, 0.06);
   --shadow: 0 1px 2px rgba(12, 12, 14, 0.04), 0 8px 24px -12px rgba(12, 12, 14, 0.08);
   --edge: inset 0 1px 0 rgba(255, 255, 255, 0.7);
@@ -49,7 +48,6 @@
     --neg: #ff4d4a;
     --neg-wash: #250e0e;
     --on-ink: #060607;
-    --ring: #60a5fa;
     --glow: rgba(255, 255, 255, 0.07);
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px -16px rgba(0, 0, 0, 0.8);
     --edge: inset 0 1px 0 rgba(255, 255, 255, 0.04);
@@ -95,10 +93,17 @@ body {
   overflow-x: hidden;
 }
 
-:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-  border-radius: 8px;
+/* a quiet ink ring for keyboard focus only; in a layer, so an element's outline-none still wins */
+@layer base {
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--ink) 30%, transparent);
+    outline-offset: 2px;
+  }
+  input:focus-visible,
+  textarea:focus-visible,
+  [tabindex='-1']:focus-visible {
+    outline: none;
+  }
 }
 
 .num {
