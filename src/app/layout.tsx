@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
 import { AppNav } from '../components/AppNav';
-import { Footer } from '../components/Footer';
 import { Toaster } from '../components/Toaster';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from '../lib/site';
 import './globals.css';
@@ -41,7 +40,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <main id="main" className="flex-1">
             {children}
           </main>
-          <Footer />
         </div>
         <Toaster />
       </body>

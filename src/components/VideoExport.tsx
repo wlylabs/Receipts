@@ -157,7 +157,7 @@ function Maker({ video, fileBase }: { video: ReplayVideo; fileBase: string }) {
       </div>
       <div className="mt-2 flex items-center justify-between gap-3">
         <p className="text-[12.5px] text-muted">
-          {Math.round(seconds)} s · {FORMATS[format].width}×{FORMATS[format].height} · Made on your device.
+          {Math.round(seconds)} s · {FORMATS[format].width}×{FORMATS[format].height}
         </p>
         {sound && (
           <button type="button" onClick={listen} disabled={busy} className="btn btn-quiet h-8 min-h-0 shrink-0 px-2.5 text-[12.5px]">

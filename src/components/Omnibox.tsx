@@ -14,26 +14,22 @@ import type { ApiError, Resolved } from '../lib/types';
 
 export type PasteKind = 'token' | 'wallet';
 
-const COPY: Record<PasteKind, { label: string; title: string; body: string; placeholder: string; empty: string; bad: string }> = {
+const COPY: Record<PasteKind, { label: string; placeholder: string; empty: string; bad: string }> = {
   token: {
-    label: 'Token CA',
-    title: 'Token CA',
-    body: 'See the market right now, every candle, and its top 3 gainers and losers, ready to copy or turn into a video.',
+    label: 'Token',
     placeholder: 'Paste a token CA',
     empty: 'Paste a token CA.',
     bad: 'That doesn’t look like a Solana or 0x token address.',
   },
   wallet: {
     label: 'Wallet',
-    title: 'Wallet address',
-    body: 'Pick a token they traded, watch their trades replay on the chart, then turn it into a video.',
     placeholder: 'Paste a wallet address',
     empty: 'Paste a wallet address.',
     bad: 'That doesn’t look like a Solana or 0x wallet address.',
   },
 };
 
-const ICON: Record<PasteKind, React.ReactNode> = { token: <LineChart className="size-4" />, wallet: <History className="size-4" /> };
+const ICON: Record<PasteKind, React.ReactNode> = { token: <LineChart className="size-3.5" aria-hidden />, wallet: <History className="size-3.5" aria-hidden /> };
 
 /**
  * The paste box, with the choice of what is pasted: a token CA opens its top traders, a wallet
@@ -116,9 +112,9 @@ export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm
   const lg = size === 'lg';
   return (
     <form onSubmit={submit} noValidate>
-      {lg ? (
-        // on the home page the choice is the two cards that say what each one does
-        <div role="radiogroup" aria-label="What are you pasting?" className="mb-3 grid gap-2 sm:grid-cols-2">
+      {/* what is pasted: one quiet switch above the box */}
+      <div className={cx('mb-3 flex', lg && 'justify-center')}>
+        <div role="radiogroup" aria-label="What are you pasting?" className="inline-flex rounded-full border border-line bg-subtle/70 p-1 text-[13px] backdrop-blur">
           {(Object.keys(COPY) as PasteKind[]).map((k) => (
             <button
               key={k}
@@ -126,41 +122,18 @@ export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm
               role="radio"
               aria-checked={kind === k}
               onClick={() => pick(k)}
-              className={cx(
-                'flex gap-3 rounded-xl border px-3.5 py-3 text-left transition-colors',
-                kind === k ? 'border-ink bg-surface shadow-[0_1px_2px_rgba(0,0,0,0.06)]' : 'border-line hover:bg-hover',
-              )}
+              className={cx('flex min-h-8 items-center gap-1.5 rounded-full px-4 font-medium transition-all duration-300', kind === k ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-muted hover:text-ink')}
             >
-              <span className={cx('mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg', kind === k ? 'bg-ink text-on-ink' : 'bg-subtle text-ink-2')} aria-hidden>
-                {ICON[k]}
-              </span>
-              <span>
-                <span className="block text-[13.5px] font-semibold">{COPY[k].title}</span>
-                <span className="mt-0.5 block text-[13px] leading-snug text-muted">{COPY[k].body}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div role="radiogroup" aria-label="What are you pasting?" className="mb-2 inline-flex rounded-[10px] bg-subtle p-0.5 text-[13px]">
-          {(Object.keys(COPY) as PasteKind[]).map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="radio"
-              aria-checked={kind === k}
-              onClick={() => pick(k)}
-              className={cx('min-h-9 rounded-lg px-3.5 font-medium transition-colors', kind === k ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.08)]' : 'text-muted hover:text-ink')}
-            >
+              {ICON[k]}
               {COPY[k].label}
             </button>
           ))}
         </div>
-      )}
+      </div>
       <label htmlFor="omnibox" className="sr-only">
         {copy.label}
       </label>
-      <div className={cx('field pl-3.5 pr-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]', lg ? 'h-14 rounded-[14px]' : 'h-11', error && 'border-neg')}>
+      <div className={cx('field pl-4 pr-1.5', lg ? 'h-16 rounded-full bg-surface shadow-[var(--shadow)]' : 'h-11', error && 'border-neg')}>
         <Search className="size-4 shrink-0 text-faint" aria-hidden />
         <input
           ref={input}
@@ -196,19 +169,19 @@ export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm
             <button type="button" onClick={() => setValue('')} className="grid size-9 place-items-center rounded-lg text-faint hover:text-ink" aria-label="Clear">
               <X className="size-4" />
             </button>
-            <button type="submit" className={cx('btn btn-primary min-h-0 px-3', lg ? 'h-10' : 'h-8')} aria-label="Go">
+            <button type="submit" className={cx('btn btn-primary min-h-0 px-3', lg ? 'h-12 px-5' : 'h-8')} aria-label="Go">
               <ArrowRight className="size-4" />
             </button>
           </>
         ) : (
-          <button type="button" onClick={paste} className={cx('btn btn-primary min-h-0 px-3', lg ? 'h-10' : 'h-8')}>
+          <button type="button" onClick={paste} className={cx('btn btn-primary min-h-0 px-3', lg ? 'h-12 px-5' : 'h-8')}>
             <ClipboardPaste className="size-4" aria-hidden />
             Paste
           </button>
         )}
       </div>
       {error && (
-        <p id="omnibox-error" className="mt-2 text-[13px] text-neg" role="alert">
+        <p id="omnibox-error" className={cx('mt-2.5 text-[13px] text-neg', lg && 'text-center')} role="alert">
           {error.text}
           {error.switchTo && (
             <>

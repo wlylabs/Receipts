@@ -65,7 +65,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
+    <div className="reveal mx-auto max-w-6xl px-4 pt-5 sm:px-6 sm:pt-8">
       <div className="mx-auto max-w-3xl">
         <header className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
@@ -99,7 +99,7 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
                 </span>
               </span>
             </Link>
-            <p className={cx('num text-[20px] font-semibold tracking-tight', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
+            <p className={cx('num display text-[26px]', runTone === 'pos' && 'text-pos', runTone === 'neg' && 'text-neg')}>{usd(running, { signed: true })}</p>
           </div>
           <div className="relative mt-3">
             <ReplayChart candles={chart.candles} step={chart.step} scale={scale} label={label} from={from} to={to} head={head} markers={markers.length <= 120 ? markers : []} tone={runTone} bubble={head !== undefined ? usd(running, { signed: true }) : undefined} />
@@ -136,7 +136,10 @@ function TraderReplay({ r }: { r: TraderReceipts }) {
 
         {done && <TradeList r={r} />}
 
-        <p className="mt-3 px-1 text-[12px] leading-relaxed text-faint">{sourceNote(r)}</p>
+        <details className="group mt-3 px-1 text-[12px] leading-relaxed text-faint">
+          <summary className="cursor-pointer list-none select-none hover:text-muted">How it’s counted</summary>
+          <p className="mt-1.5">{sourceNote(r)}</p>
+        </details>
       </div>
     </div>
   );
