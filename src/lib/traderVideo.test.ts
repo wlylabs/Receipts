@@ -46,6 +46,12 @@ describe('trader video story', () => {
     expect(video.pops?.map((p) => p.tone)).toEqual(['pos', 'pos']);
     expect(video.pops?.[1]?.text).toMatch(/^\+\$.* · \d+(\.\d)?×$/);
     for (const p of video.pops ?? []) expect(video.markers.some((m) => m.ts === p.ts && m.kind === 'sell')).toBe(true);
+    // the long cut also says what each buy put in, and closes on the receipt with the rank stamped
+    expect(video.notes?.length).toBeGreaterThan(0);
+    for (const n of video.notes ?? []) expect(video.markers.some((m) => m.ts === n.ts && m.kind === 'buy')).toBe(true);
+    expect(video.notes?.[0]?.text).toMatch(/^\$.* in$/);
+    expect(video.outro?.stamp?.tone).toBe('pos');
+    expect(video.outro?.lines.length).toBeGreaterThan(0);
   });
 
   it('calls the paper top it gave back, and the bag still held', () => {

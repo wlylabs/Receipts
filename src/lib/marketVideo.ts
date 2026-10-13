@@ -68,6 +68,16 @@ export function marketStory(r: TokenReceipts, now = Date.now() / 1000): { video:
     date: day,
     // the market's own length: a young token is a quick clip, a long history takes its time
     paced: true,
+    outro: {
+      title: `$${token.symbol} · ${token.chainName}`,
+      lines: [
+        { k: 'Launched at', v: at(launch) },
+        { k: 'All-time high', v: at(ath), tone: 'pos' },
+        { k: 'From the top', v: pct(live / ath - 1, { signed: true }), tone: live < ath * 0.995 ? 'neg' : null },
+        { k: 'Since launch', v: pct(live / launch - 1, { signed: true }), tone: live >= launch ? 'pos' : 'neg' },
+      ],
+      total: { k: supply ? 'Market cap now' : 'Price now', v: supply ? mcap(live * supply) : price(live), tone: live >= launch ? 'pos' : 'neg' },
+    },
   };
   const fileBase = `${token.symbol.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token'}-market`;
   return { video, fileBase };

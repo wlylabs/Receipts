@@ -17,7 +17,7 @@ import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './can
  */
 
 export type VideoFormat = 'landscape' | 'square' | 'portrait';
-export type VideoLength = 'short' | 'story';
+export type VideoLength = 'short' | 'story' | 'long';
 
 export const FORMATS: Record<VideoFormat, { width: number; height: number; label: string; ratio: string; hint: string }> = {
   landscape: { width: 1920, height: 1080, label: 'YouTube', ratio: '16:9', hint: 'YouTube, desktop' },
@@ -35,7 +35,21 @@ interface Timing {
 export const LENGTHS: Record<VideoLength, Timing & { label: string }> = {
   short: { seconds: 9, hook: 0.5, play: 5.6, label: 'Short' },
   story: { seconds: 18, hook: 0.6, play: 13, label: 'Story' },
+  // the long cut's length follows the run (see timingOf); this is the fallback for a run with no trades
+  long: { seconds: 36, hook: 0.8, play: 28, label: 'Long' },
 };
+
+/** Whether a cut tells the run (captions, what each trade did) rather than only showing it. */
+export const tells = (l: VideoLength) => l !== 'short';
+
+/** Seconds the long cut holds on its closing receipt after the replay. */
+const OUTRO = 8;
+
+/**
+ * The long cut's replay, in seconds: a base and a few seconds per trade, so a wallet with two
+ * trades isn't stretched thin and a busy one still ends under a minute.
+ */
+const LONG = { base: 10, perTrade: 3, min: 16, max: 50 };
 
 /**
  * For a paced video: candles a second the replay runs at, and the shortest and longest the replay
@@ -44,6 +58,7 @@ export const LENGTHS: Record<VideoLength, Timing & { label: string }> = {
 const PACE: Record<VideoLength, { rate: number; min: number; max: number }> = {
   short: { rate: 10, min: 2.5, max: 9 },
   story: { rate: 5, min: 5, max: 20 },
+  long: { rate: 3, min: 12, max: LONG.max },
 };
 
 /**
@@ -53,6 +68,12 @@ const PACE: Record<VideoLength, { rate: number; min: number; max: number }> = {
 export function timingOf(l: VideoLength, v?: Run): Timing {
   const T = LENGTHS[l];
   const n = v?.paced ? (v.candles?.length ?? 0) : 0;
+  if (!n && l === 'long' && v) {
+    const trades = (v.markers ?? []).filter((m) => m.ts >= v.from && m.ts <= v.to).length;
+    if (!trades) return T;
+    const play = T.hook + Math.min(LONG.max, Math.max(LONG.min, LONG.base + LONG.perTrade * trades));
+    return { seconds: Math.round((play + OUTRO) * FPS) / FPS, hook: T.hook, play };
+  }
   if (!n) return T;
   const P = PACE[l];
   const play = T.hook + Math.min(P.max, Math.max(P.min, n / P.rate));
@@ -94,6 +115,10 @@ export interface ReplayVideo {
   captions: Caption[];
   /** Floated up off the markers in the story cut; each must sit on one of `markers`. */
   pops?: Pop[];
+  /** More pops for the long cut only, e.g. what each buy put in; each must sit on one of `markers`. */
+  notes?: Pop[];
+  /** The receipt the long cut closes on. */
+  outro?: Outro;
   /** The P&L in USD with the playhead at a time; its sign colours the counter. */
   pnlAt: (ts: number) => number;
   /** What the counter reads with the playhead at a time, e.g. the market cap; the P&L when left out. */
@@ -112,8 +137,18 @@ export interface ReplayVideo {
   date: (ts: number) => string;
 }
 
+/** The closing receipt: a few lines, the total, and a stamp. */
+export interface Outro {
+  title: string;
+  lines: { k: string; v: string; tone?: 'pos' | 'neg' | null }[];
+  /** The big line at the foot; the run's P&L when left out. */
+  total?: { k: string; v: string; tone: 'pos' | 'neg' | null };
+  stamp?: { text: string; tone: 'pos' | 'neg' | null };
+}
+
 const { bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = X_LIGHT;
 const SANS = "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif";
+const MONO = "'JetBrains Mono', ui-monospace, Menlo, monospace";
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const easeOut = (x: number) => 1 - (1 - clamp01(x)) ** 3;
@@ -132,16 +167,19 @@ type Run = Pick<ReplayVideo, 'from' | 'to'> & Partial<Pick<ReplayVideo, 'candles
 
 /** How much slower the replay runs right on a trade, and over how much of the run it eases back. */
 const SLOW = 2.4;
+/** The long cut lingers longer on each trade. */
+const SLOW_LONG = 4.5;
 const SLOW_WIDTH = 0.035;
 const WARP_STEPS = 512;
-const warps = new WeakMap<object, Float64Array | null>();
+const warps = new WeakMap<object, Map<number, Float64Array | null>>();
 
 /**
  * Slow motion around trades, as a table: the share of the replay's time spent by each point of the
  * run, which rises near every trade. Null when there are no trades to slow down for.
  */
-function warpTable(v: Run): Float64Array | null {
-  if (warps.has(v)) return warps.get(v)!;
+function warpTable(v: Run, slow = SLOW): Float64Array | null {
+  const cached = warps.get(v)?.get(slow);
+  if (cached !== undefined) return cached;
   const span = Math.max(1, v.to - v.from);
   const at = (v.markers ?? []).map((m) => (m.ts - v.from) / span).filter((u) => u >= 0 && u <= 1);
   let table: Float64Array | null = null;
@@ -150,13 +188,14 @@ function warpTable(v: Run): Float64Array | null {
     for (let i = 1; i <= WARP_STEPS; i++) {
       const u = (i - 0.5) / WARP_STEPS;
       let w = 1;
-      for (const a of at) w += SLOW * Math.exp(-(((u - a) / SLOW_WIDTH) ** 2));
+      for (const a of at) w += slow * Math.exp(-(((u - a) / SLOW_WIDTH) ** 2));
       table[i] = table[i - 1]! + w;
     }
     const total = table[WARP_STEPS]!;
     for (let i = 0; i <= WARP_STEPS; i++) table[i] = table[i]! / total;
   }
-  warps.set(v, table);
+  if (!warps.has(v)) warps.set(v, new Map());
+  warps.get(v)!.set(slow, table);
   return table;
 }
 
@@ -182,8 +221,8 @@ function warp(x: number, table: Float64Array | null): number {
 export function playAt(time: number, l: VideoLength = 'short', v?: Run): number {
   const T = timingOf(l, v);
   const x = (time - T.hook) / (T.play - T.hook);
-  const eased = l === 'story' ? clamp01(x) * 0.5 + easeInOut(x) * 0.5 : easeInOut(x);
-  return v ? warp(eased, warpTable(v)) : eased;
+  const eased = tells(l) ? clamp01(x) * 0.5 + easeInOut(x) * 0.5 : easeInOut(x);
+  return v ? warp(eased, warpTable(v, l === 'long' ? SLOW_LONG : SLOW)) : eased;
 }
 
 /** The time in the video at which the playhead reaches a timestamp of the run. */
@@ -417,8 +456,8 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     A(1);
   }
 
-  // the latest caption, in the story cut
-  if (l === 'story' && playing) {
+  // the latest caption, in the story and long cuts
+  if (tells(l) && playing) {
     let cap: Caption | null = null;
     for (const c of v.captions) if (c.ts <= head) cap = c;
     if (cap) {
@@ -495,9 +534,9 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
   }
   g.restore();
 
-  // what each sell made, rising off its marker and fading, in the story cut
-  if (l === 'story' && playing) {
-    for (const o of v.pops ?? []) {
+  // what each sell made (and in the long cut, what each buy put in), rising off its marker and fading
+  if (tells(l) && playing) {
+    for (const o of [...(v.pops ?? []), ...(l === 'long' ? (v.notes ?? []) : [])]) {
       if (o.ts > head || o.ts < geo.t0) continue;
       const dt = time - timeOf(Math.max(o.ts, v.from), v, l);
       if (dt >= POP_SECONDS) continue;
@@ -523,8 +562,134 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     A(1);
   }
 
+  // the long cut closes on its receipt, printed over the whole chart
+  if (l === 'long' && v.outro && time > T.play + 0.6) drawOutro(g, L, v, v.outro, time - T.play - 0.6, alpha);
+
   A(1);
 }
+
+/** The closing receipt: paper sliding up over a dimmed chart, line by line, then the stamp. */
+function drawOutro(g: CanvasRenderingContext2D, L: Layout, v: ReplayVideo, o: Outro, t: number, alpha: number) {
+  const { W, H } = L;
+  const s = Math.min(W, H) / 1080;
+  const w = Math.min(W - L.pad * 2, 820 * s);
+  const lh = 50 * s;
+  const lines = o.lines.slice(0, 7);
+  // the header, the lines, the total, then room for the stamp (or a margin) above the torn foot
+  const h = 218 * s + lines.length * lh + 164 * s + (o.stamp ? 200 * s : 70 * s);
+  const x = (W - w) / 2;
+  const y = (H - h) / 2 + (1 - easeOut(t / 0.5)) * 120 * s;
+  const A = (a: number) => (g.globalAlpha = alpha * a);
+
+  A(0.82 * easeOut(t / 0.4));
+  g.fillStyle = BG;
+  g.fillRect(0, 0, W, H);
+  A(easeOut(t / 0.35));
+  g.save();
+  g.shadowColor = 'rgba(0,0,0,0.18)';
+  g.shadowBlur = 40 * s;
+  g.shadowOffsetY = 12 * s;
+  g.fillStyle = '#fffdf7';
+  g.beginPath();
+  // a torn zigzag foot, like paper off a till
+  const tooth = 18 * s;
+  g.moveTo(x, y);
+  g.lineTo(x + w, y);
+  g.lineTo(x + w, y + h);
+  for (let px = x + w; px > x; px -= tooth * 2) {
+    g.lineTo(Math.max(x, px - tooth), y + h - tooth);
+    g.lineTo(Math.max(x, px - tooth * 2), y + h);
+  }
+  g.closePath();
+  g.fill();
+  g.restore();
+
+  const ix = x + 56 * s;
+  const ox = x + w - 56 * s;
+  let cy = y + 78 * s;
+  const rule = () => {
+    g.strokeStyle = '#c3bdab';
+    g.lineWidth = 2 * s;
+    g.setLineDash([8 * s, 8 * s]);
+    g.beginPath();
+    g.moveTo(ix, cy);
+    g.lineTo(ox, cy);
+    g.stroke();
+    g.setLineDash([]);
+  };
+  g.textBaseline = 'alphabetic';
+  g.textAlign = 'center';
+  g.fillStyle = INK;
+  g.font = `700 ${Math.round(34 * s)}px ${MONO}`;
+  g.fillText('RECEIPT', W / 2, cy);
+  cy += 44 * s;
+  g.fillStyle = MUTED;
+  g.font = `500 ${Math.round(24 * s)}px ${MONO}`;
+  g.fillText(o.title, W / 2, cy, w - 112 * s);
+  cy += 40 * s;
+  rule();
+  cy += 56 * s;
+
+  g.font = `500 ${Math.round(27 * s)}px ${MONO}`;
+  lines.forEach((line, i) => {
+    A(easeOut((t - 0.35 - i * 0.12) / 0.25));
+    g.textAlign = 'left';
+    g.fillStyle = MUTED;
+    g.fillText(line.k.toUpperCase(), ix, cy);
+    g.textAlign = 'right';
+    g.fillStyle = line.tone === 'pos' ? POS : line.tone === 'neg' ? NEG : INK;
+    g.fillText(line.v, ox, cy);
+    cy += lh;
+  });
+
+  const tTotal = 0.35 + lines.length * 0.12 + 0.2;
+  A(easeOut((t - tTotal) / 0.3));
+  cy += 4 * s;
+  rule();
+  cy += 60 * s;
+  g.textAlign = 'left';
+  g.fillStyle = INK;
+  g.font = `700 ${Math.round(28 * s)}px ${MONO}`;
+  g.fillText(o.total?.k.toUpperCase() ?? 'TOTAL P&L', ix, cy);
+  const total = o.total?.v ?? v.money(v.pnl);
+  g.textAlign = 'right';
+  g.fillStyle = o.total ? (o.total.tone === 'pos' ? POS : o.total.tone === 'neg' ? NEG : INK) : toneColor(v.pnl);
+  fit(g, total, Math.round(92 * s), 750, w - 112 * s);
+  cy += 100 * s;
+  g.fillText(total, ox, cy);
+
+  if (o.stamp) {
+    const k = (t - stampAt(o)) / 0.35;
+    if (k > 0) {
+      A(clamp01(k * 2) * 0.9);
+      const size = Math.round(52 * s);
+      g.save();
+      g.translate(W / 2, cy + 90 * s);
+      g.rotate(-0.14);
+      const z = 1 + 1.2 * (1 - easeBack(k));
+      g.scale(z, z);
+      g.font = `800 ${size}px ${MONO}`;
+      const tw = g.measureText(o.stamp.text).width + size * 0.9;
+      const th = size * 1.5;
+      const c = o.stamp.tone === 'pos' ? POS : o.stamp.tone === 'neg' ? NEG : INK;
+      g.strokeStyle = c;
+      g.lineWidth = 5 * s;
+      g.strokeRect(-tw / 2, -th / 2, tw, th);
+      g.lineWidth = 2 * s;
+      g.strokeRect(-tw / 2 + 9 * s, -th / 2 + 9 * s, tw - 18 * s, th - 18 * s);
+      g.fillStyle = c;
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(o.stamp.text, 0, 2 * s);
+      g.restore();
+      g.textBaseline = 'alphabetic';
+    }
+  }
+  A(1);
+}
+
+/** Seconds into the outro at which the stamp lands. */
+const stampAt = (o: Outro) => 0.35 + Math.min(7, o.lines.length) * 0.12 + 0.9;
 
 /** How long a pop shows, rising the whole time. */
 const POP_SECONDS = 1.6;
@@ -594,7 +759,7 @@ export function soundCues(v: ReplayVideo, l: VideoLength): Cue[] {
   // a tick each time the price steps onto another note, like a ratchet, so a fast move ticks
   // fast; never closer than GAP, and a slow one still on a quiet stretch
   const GAP = 0.055;
-  const QUIET = l === 'story' ? 0.4 : 0.3;
+  const QUIET = tells(l) ? 0.4 : 0.3;
   let last = -Infinity;
   let step = -1;
   for (let t = T.hook; t < T.play; t += 1 / 120) {
@@ -607,6 +772,7 @@ export function soundCues(v: ReplayVideo, l: VideoLength): Cue[] {
   }
   for (const m of v.markers) if (m.ts <= v.to) cues.push({ t: timeOf(Math.max(m.ts, v.from), v, l), kind: m.kind });
   cues.push({ t: T.play + 0.2, kind: v.pnl > 1e-6 ? 'win' : v.pnl < -1e-6 ? 'loss' : 'even' });
+  if (l === 'long' && v.outro?.stamp) cues.push({ t: T.play + 0.6 + stampAt(v.outro), kind: 'stamp' });
   return cues;
 }
 
@@ -619,7 +785,10 @@ export interface RenderedVideo {
 
 async function loadFonts() {
   if (typeof document === 'undefined' || !document.fonts) return;
-  await Promise.all(['400', '500', '600', '650', '700'].map((w) => document.fonts.load(`${w} 60px 'Inter Variable'`))).catch(() => undefined);
+  await Promise.all([
+    ...['400', '500', '600', '650', '700'].map((w) => document.fonts.load(`${w} 60px 'Inter Variable'`)),
+    ...['500', '700'].map((w) => document.fonts.load(`${w} 60px 'JetBrains Mono'`)),
+  ]).catch(() => undefined);
 }
 
 export async function renderReplayVideo(
