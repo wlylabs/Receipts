@@ -1,17 +1,16 @@
-import { ArrowUpRight, BadgePercent } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import type { Plug } from '../lib/referral';
 import { cx } from '../lib/cx';
+import { FmathLogo } from './FmathLogo';
 
 /** fomo's 10% referral, pitched with what this page just showed, and FMath to check the math. */
 export function ReferralPlug({ plug, className }: { plug: Plug; className?: string }) {
   return (
     <div className={cx('panel flex items-start gap-3 p-4', className)}>
-      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent text-on-accent" aria-hidden>
-        <BadgePercent className="size-4.5" />
-      </span>
+      <FmathLogo className="size-9 shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="label flex items-center gap-1.5 text-[9.5px]">
-          fomo · 10% off fees <span className="rounded-sm bg-subtle px-1 text-faint">Ad</span>
+          FMath · 10% off fomo fees <span className="rounded-sm bg-subtle px-1 text-faint">Ad</span>
         </p>
         <p className="mt-0.5 text-[14px] font-semibold leading-snug">{plug.title}</p>
         <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{plug.body}</p>
