@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clapperboard, Download, Loader2, Play, Volume2, VolumeX } from 'lucide-react';
-import { drawFrame, FORMATS, LENGTHS, soundCues, timingOf, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
+import { drawFrame, FORMATS, LENGTHS, recommendFormat, recommendLength, soundCues, timingOf, type ReplayVideo, type VideoFormat, type VideoLength } from '../lib/replayVideo';
 import { saveFile } from '../lib/clipboard';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
@@ -14,13 +14,13 @@ import { forget, unspent } from '../lib/paidDownloads';
 import type { PayInfo } from '../lib/types';
 
 /** A button that opens the video maker: pick a size and a length, watch it, download it. */
-export function VideoExport({ video, fileBase, className, title }: { video: ReplayVideo; fileBase: string; className?: string; title?: string }) {
+export function VideoExport({ video, fileBase, className, title, label = 'Video' }: { video: ReplayVideo; fileBase: string; className?: string; title?: string; label?: string }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
   return (
     <>
       <button type="button" onClick={() => setOpen(true)} className={cx('btn', className ?? 'btn-quiet')}>
-        <Clapperboard className="size-4" aria-hidden /> Video
+        <Clapperboard className="size-4" aria-hidden /> {label}
       </button>
       <VideoSheet video={video} fileBase={fileBase} open={open} onClose={close} title={title} />
     </>
@@ -40,8 +40,14 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
   // the video draws its candles the way the page's charts do
   const [style] = useChartStyle();
   const video = useMemo(() => ({ ...run, candleStyle: style }), [run, style]);
-  const [format, setFormat] = useState<VideoFormat>('square');
-  const [length, setLength] = useState<VideoLength>('short');
+  // the cut that suits this run is picked to start with, and marked
+  const pick = useMemo(() => recommendLength(run), [run]);
+  const [length, setLength] = useState<VideoLength>(pick.length);
+  // the size follows the length's best fit until people pick one themselves
+  const fit = recommendFormat(length);
+  const [chosen, setChosen] = useState<VideoFormat | null>(null);
+  const format = chosen ?? fit.format;
+  const setFormat = setChosen;
   const [sound, setSound] = useState(true);
   const [progress, setProgress] = useState<number | null>(null);
   const [restart, setRestart] = useState(0);
@@ -143,7 +149,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
   const previewW = format === 'landscape' ? 640 : format === 'square' ? 480 : 300;
   return (
     <div>
-      <p className="eyebrow">Size</p>
+      <p className="label flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">1</span> Size</p>
       <div role="radiogroup" aria-label="Size" className="mt-1.5 grid grid-cols-3 gap-2">
         {(Object.keys(FORMATS) as VideoFormat[]).map((f) => {
           const on = f === format;
@@ -155,24 +161,31 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
               aria-checked={on}
               disabled={busy}
               onClick={() => setFormat(f)}
-              className={cx('flex flex-col items-start gap-1.5 rounded-xl border px-3 py-2.5 text-left transition-colors', on ? 'border-ink bg-subtle' : 'border-line hover:bg-hover')}
+              className={cx('flex flex-col items-start gap-1.5 rounded-[10px] border px-3 py-2.5 text-left transition-colors', on ? 'border-ink bg-surface shadow-[0_2px_0_var(--ink)]' : 'border-line hover:bg-hover')}
             >
               <span className={cx('rounded-[3px] border-2', on ? 'border-ink' : 'border-line-strong', f === 'landscape' ? 'h-4 w-7' : f === 'square' ? 'size-5' : 'h-6 w-3.5')} aria-hidden />
               <span className="text-[13px] font-semibold leading-tight">
                 {FORMATS[f].label} <span className="num font-normal text-muted">{FORMATS[f].ratio}</span>
               </span>
               <span className="text-[11.5px] leading-tight text-muted">{FORMATS[f].hint}</span>
+              {f === fit.format && <span className="mono rounded bg-accent px-1 text-[9px] font-bold uppercase tracking-wide whitespace-nowrap text-on-accent">Best fit</span>}
             </button>
           );
         })}
       </div>
 
-      <p className="eyebrow mt-3">Candles</p>
+      {format !== fit.format && (
+        <p className="mt-1.5 text-[12px] leading-snug text-muted">
+          Best fit for {LENGTHS[length].label}: {FORMATS[fit.format].label} {FORMATS[fit.format].ratio}. {fit.reason}
+        </p>
+      )}
+
+      <p className="label mt-4 flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">2</span> Candles</p>
       <ChartStylePicker inline className="mt-1.5" />
 
-      <div className="mt-3 flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="eyebrow">Length</p>
+      <div className="mt-4 flex flex-wrap items-end gap-2 sm:gap-3">
+        <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
+          <p className="label flex items-center gap-2"><span className="step min-w-5 h-5 text-[10px]">3</span> Length</p>
           <div role="radiogroup" aria-label="Length" className="mt-1.5 flex rounded-lg bg-subtle p-0.5">
             {(Object.keys(LENGTHS) as VideoLength[]).map((l) => (
               <button
@@ -182,18 +195,24 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
                 aria-checked={l === length}
                 disabled={busy}
                 onClick={() => setLength(l)}
-                className={cx('h-9 flex-1 rounded-md px-2 text-[12.5px] font-medium', l === length ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
+                className={cx('flex min-h-11 flex-1 flex-col items-center justify-center rounded-md px-2 py-1 text-[12.5px] font-medium', l === length ? 'bg-surface text-ink shadow-sm' : 'text-muted')}
               >
-                {LENGTHS[l].label} <span className="text-muted">· {Math.round(timingOf(l, video).seconds)} s</span>
+                <span className="whitespace-nowrap">
+                  {LENGTHS[l].label} <span className="text-muted">· {Math.round(timingOf(l, video).seconds)} s</span>
+                </span>
+                {l === pick.length && <span className="mono mt-0.5 rounded bg-accent px-1 text-[9px] font-bold uppercase tracking-wide text-on-accent">Recommended</span>}
               </button>
             ))}
           </div>
         </div>
-        <button type="button" onClick={() => setSound((s) => !s)} disabled={busy} aria-pressed={sound} className="btn btn-quiet h-10 px-3">
+        <button type="button" onClick={() => setSound((s) => !s)} disabled={busy} aria-pressed={sound} className="btn btn-quiet h-11 px-3">
           {sound ? <Volume2 className="size-4" aria-hidden /> : <VolumeX className="size-4" aria-hidden />}
           {sound ? 'Sound on' : 'Sound off'}
         </button>
       </div>
+      <p className="mt-1.5 text-[12px] leading-snug text-muted">
+        {length === pick.length ? pick.reason : `Recommended: ${LENGTHS[pick.length].label}. ${pick.reason}`}
+      </p>
 
       <div className="mt-4 flex justify-center rounded-xl border border-line bg-subtle p-2">
         <canvas key={`${format}`} ref={canvas} width={previewW} height={Math.round((previewW * height) / width)} className={cx('block h-auto rounded-md bg-white', format === 'portrait' ? 'w-[46%] sm:w-[34%]' : format === 'square' ? 'w-[78%] sm:w-[62%]' : 'w-full')} aria-label="Video preview" />
@@ -219,7 +238,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
           }}
         />
       ) : (
-        <button type="button" onClick={() => make()} disabled={busy || !pay} className="btn btn-primary mt-4 h-11 w-full">
+        <button type="button" onClick={() => make()} disabled={busy || !pay} className="btn btn-primary mt-4 h-12 w-full text-[15px]">
           {busy || !pay ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Download className="size-4" aria-hidden />}
           {busy ? `Rendering ${Math.round(progress * 100)}%` : `Download ${FORMATS[format].ratio} · ${Math.round(seconds)} s${locked ? ` · $${pay.priceUsd.toFixed(pay.priceUsd % 1 ? 2 : 0)}` : ''}`}
         </button>

@@ -6,7 +6,7 @@
  * plays in a small room, a short reverb made from the same seeded noise.
  */
 
-export type CueKind = 'hook' | 'tick' | 'buy' | 'sell' | 'win' | 'loss' | 'even';
+export type CueKind = 'hook' | 'tick' | 'buy' | 'sell' | 'win' | 'loss' | 'even' | 'stamp';
 
 export interface Cue {
   t: number;
@@ -80,6 +80,12 @@ export async function renderSound(cues: Cue[], seconds: number): Promise<AudioBu
           bell(ctx, master, t, f * 2, 0.6, 0.05);
         });
         shimmer(ctx, master, noise, c.t + 0.1, 0.9, 0.05);
+        break;
+      case 'stamp':
+        // a rubber stamp on paper: a dull thud and a slap
+        tone(ctx, master, c.t, 'sine', 130, 55, 0.25, 0.4);
+        click(ctx, master, noise, c.t, 0.22);
+        whoosh(ctx, master, noise, c.t - 0.03, 0.12, 0.1, 900);
         break;
       case 'loss':
         tone(ctx, master, c.t, 'sine', 140, 48, 0.7, 0.45);

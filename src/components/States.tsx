@@ -1,25 +1,27 @@
 'use client';
 
 import Link from 'next/link';
-import { RotateCw } from 'lucide-react';
+import { Loader2, RotateCw } from 'lucide-react';
 import type { ApiError } from '../lib/types';
 
 /** A quiet placeholder in the page's own shape while data loads. */
 export function Loading({ what }: { what: string }) {
   return (
-    <div className="mx-auto max-w-6xl px-4 pt-8 sm:px-6" role="status" aria-live="polite">
-      <div className="flex items-center gap-3">
-        <div className="skeleton size-10 rounded-full" />
+    <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6 sm:pt-6" role="status" aria-live="polite">
+      <p className="label flex items-center gap-2">
+        <Loader2 className="size-3.5 animate-spin" aria-hidden /> {what}
+      </p>
+      <div className="mt-5 flex items-center gap-3">
+        <div className="skeleton size-12 rounded-full" />
         <div className="space-y-2">
-          <div className="skeleton h-4 w-32" />
-          <div className="skeleton h-3 w-48" />
+          <div className="skeleton h-6 w-36" />
+          <div className="skeleton h-3.5 w-52" />
         </div>
       </div>
-      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="skeleton aspect-[16/9] w-full rounded-[14px]" />
-        <div className="skeleton h-80 rounded-[14px]" />
+      <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="skeleton aspect-[16/9] w-full rounded-[12px]" />
+        <div className="skeleton h-80 rounded-[12px]" />
       </div>
-      <p className="mt-4 text-[13px] text-muted">{what}</p>
     </div>
   );
 }
@@ -39,7 +41,8 @@ export function Failure({ error, onRetry }: { error: ApiError; onRetry: () => vo
               : 'Couldn’t load that';
   return (
     <div className="mx-auto max-w-md px-4 py-16 text-center" role="alert">
-      <p className="text-lg font-semibold">{title}</p>
+      <p className="mono mx-auto inline-block rounded-md border border-dashed border-line-strong px-2 py-1 text-[11px] uppercase tracking-[0.12em] text-muted">Void · no receipt</p>
+      <p className="mt-4 text-[20px] font-bold tracking-tight">{title}</p>
       <p className="mt-1.5 text-[14px] leading-relaxed text-muted">{error.error}</p>
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {(error.code === 'upstream' || error.code === 'busy') && (
@@ -48,7 +51,7 @@ export function Failure({ error, onRetry }: { error: ApiError; onRetry: () => vo
           </button>
         )}
         <Link href="/#paste" className="btn btn-quiet">
-          Paste another
+          Try another address
         </Link>
       </div>
     </div>

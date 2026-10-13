@@ -102,7 +102,15 @@ export function traderStory(r: TraderReceipts): TraderStory {
     date: day,
   };
   video.pops = sellPops(trades, video.markers);
+  video.notes = buyNotes(trades, video.markers);
   video.captions = beats(trades, video, at);
+  // the long cut closes on the receipt: the numbers that made the P&L, and the rank stamped on it
+  const pick = new Set(['Put in', 'Took out', 'Trades', 'Realized', 'Unrealized', 'Held', 'Fees paid', 'vs traders']);
+  video.outro = {
+    title: `${short(r.owner)} on $${token.symbol}`,
+    lines: stats.filter((st) => pick.has(st.k)).slice(0, 7),
+    stamp: { text: rank.name.toUpperCase(), tone: toneOf(p.pnl) },
+  };
   const fileBase = `${r.owner.slice(0, 6)}-${token.symbol.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token'}`;
   return { trades, chart, markers, stats, rank, from, to, supply, scale, label, video, fileBase };
 }
@@ -130,6 +138,19 @@ function sellPops(trades: readonly Trade[], markers: readonly Marker[]): Pop[] {
     const x = cost > 0 ? (cost + made) / cost : 0;
     return { ts: m.ts, price: m.price, text: usd(made, { signed: true }) + (x >= 1.5 ? ` · ${times(x)}` : ''), tone: toneOf(made) };
   });
+}
+
+/** What each buy put in, summed per marker, for the long cut: a marker stands for every trade from it to the next. */
+function buyNotes(trades: readonly Trade[], markers: readonly Marker[]): Pop[] {
+  const sums = new Map<Marker, number>();
+  for (const t of trades) {
+    if (t.side !== 'buy' || t.kind === 'transfer') continue;
+    let m: Marker | undefined;
+    for (const k of markers) if (k.ts <= t.ts) m = k;
+    if (!m || m.kind !== 'buy') continue;
+    sums.set(m, (sums.get(m) ?? 0) + t.usd);
+  }
+  return [...sums].map(([m, put]) => ({ ts: m.ts, price: m.price, text: `${usd(put)} in`, tone: null }));
 }
 
 /**

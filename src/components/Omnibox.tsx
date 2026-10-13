@@ -2,88 +2,69 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ClipboardPaste, History, LineChart, Loader2, Search, X } from 'lucide-react';
+import { ArrowRight, ClipboardPaste, Loader2, ScanLine, X } from 'lucide-react';
 import { cleanAddress, isAddress, isWallet } from '../lib/receipts';
-import { useStored } from '../hooks/useStored';
-import { KEYS } from '../lib/game';
 import { readClipboard } from '../lib/clipboard';
 import { ROUTES } from '../lib/site';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
 import type { ApiError, Resolved } from '../lib/types';
 
-export type PasteKind = 'token' | 'wallet';
-
-const COPY: Record<PasteKind, { label: string; placeholder: string; empty: string; bad: string }> = {
-  token: {
-    label: 'Token',
-    placeholder: 'Paste a token CA',
-    empty: 'Paste a token CA.',
-    bad: 'That doesn’t look like a Solana or 0x token address.',
-  },
-  wallet: {
-    label: 'Wallet',
-    placeholder: 'Paste a wallet address',
-    empty: 'Paste a wallet address.',
-    bad: 'That doesn’t look like a Solana or 0x wallet address.',
-  },
-};
-
-const ICON: Record<PasteKind, React.ReactNode> = { token: <LineChart className="size-3.5" aria-hidden />, wallet: <History className="size-3.5" aria-hidden /> };
+/** What a pasted string looks like before anything is asked of the network. */
+function family(a: string): string | null {
+  if (!a) return null;
+  if (/^0x[0-9a-fA-F]{40}$/.test(a)) return 'EVM address';
+  if (isWallet(a)) return 'Solana address';
+  if (isAddress(a)) return 'Pool ID';
+  return null;
+}
 
 /**
- * The paste box, with the choice of what is pasted: a token CA opens its top traders, a wallet
- * opens the replay of its trades. People say which; a wallet is still asked of DexScreener, so a
- * token pasted there is caught instead of opening as an empty wallet.
+ * The paste box. One field for anything: it asks DexScreener whether the address is a token (it
+ * has a pair) or a wallet and opens the right page, so nobody has to say which first.
  */
 export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm'; initial?: string; onGo?: () => void }) {
   const router = useRouter();
-  const [kind, setKind] = useStored<PasteKind>(KEYS.pasteKind, 'token');
   const [value, setValue] = useState(initial);
-  const [error, setError] = useState<{ text: string; switchTo?: PasteKind } | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const copy = COPY[kind];
 
-  const pick = (k: PasteKind) => {
-    setKind(k);
-    setError(null);
-    input.current?.focus();
-  };
-
-  const go = async (raw: string, as: PasteKind = kind) => {
+  const go = async (raw: string) => {
     const a = cleanAddress(raw);
     if (!a) {
-      setError({ text: COPY[as].empty });
+      setError('Paste a token CA or a wallet address.');
       input.current?.focus();
       return;
     }
-    if (as === 'token' ? !isAddress(a) : !isWallet(a)) {
-      setError({ text: COPY[as].bad });
+    if (!isAddress(a)) {
+      setError('That doesn’t look like a Solana or 0x address.');
       input.current?.focus();
       return;
     }
     setError(null);
-    if (as === 'token') {
-      // the token page says itself when there is no pair or its chain isn't played
+    // a pool ID is never a wallet
+    if (!isWallet(a)) {
       router.push(ROUTES.token(a));
       onGo?.();
       return;
     }
     setBusy(true);
+    let to = ROUTES.token(a);
     try {
       const res = await fetch(`/api/resolve/${encodeURIComponent(a)}/`);
       const body = (await res.json()) as Resolved | ApiError;
-      if (('kind' in body && body.kind === 'token') || ('code' in body && body.code === 'unsupported')) {
+      if ('kind' in body) to = body.kind === 'wallet' ? ROUTES.wallet(a) : ROUTES.token(body.address);
+      else if (body.code === 'not-found' || body.code === 'unsupported' || body.code === 'invalid') {
         setBusy(false);
-        setError({ text: 'That’s a token CA, not a wallet.', switchTo: 'token' });
+        setError(body.error);
         return;
       }
+      // busy or upstream down: the token page says itself when there is no pair
     } catch {
-      // the check is a courtesy: if it fails, open the wallet as asked
+      // offline or the check failed: open it as a token, which explains itself
     }
-    router.push(ROUTES.wallet(a));
-    // the page stays; it shows the result under the box
+    router.push(to);
     setBusy(false);
     onGo?.();
   };
@@ -99,45 +80,23 @@ export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm
     void go(text);
   };
 
-  const switchAndGo = (to: PasteKind) => {
-    setKind(to);
-    void go(value, to);
-  };
-
   const submit = (e: FormEvent) => {
     e.preventDefault();
     void go(value);
   };
 
   const lg = size === 'lg';
+  const kind = family(cleanAddress(value));
   return (
-    <form onSubmit={submit} noValidate>
-      {/* what is pasted: one quiet switch above the box */}
-      <div className={cx('mb-3 flex', lg && 'justify-center')}>
-        <div role="radiogroup" aria-label="What are you pasting?" className="inline-flex rounded-full border border-line bg-subtle/70 p-1 text-[13px] backdrop-blur">
-          {(Object.keys(COPY) as PasteKind[]).map((k) => (
-            <button
-              key={k}
-              type="button"
-              role="radio"
-              aria-checked={kind === k}
-              onClick={() => pick(k)}
-              className={cx('flex min-h-8 items-center gap-1.5 rounded-full px-4 font-medium transition-all duration-300', kind === k ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-muted hover:text-ink')}
-            >
-              {ICON[k]}
-              {COPY[k].label}
-            </button>
-          ))}
-        </div>
-      </div>
-      <label htmlFor="omnibox" className="sr-only">
-        {copy.label}
+    <form onSubmit={submit} noValidate role="search">
+      <label htmlFor={lg ? 'omnibox' : 'omnibox-sm'} className="sr-only">
+        Token CA or wallet address
       </label>
-      <div className={cx('field pl-4 pr-1.5', lg ? 'h-16 rounded-full bg-surface shadow-[var(--shadow)]' : 'h-11', error && 'border-neg')}>
-        <Search className="size-4 shrink-0 text-faint" aria-hidden />
+      <div className={cx('field pr-1.5', lg ? 'h-16 pl-4 shadow-[0_3px_0_var(--key-field)]' : 'h-10 pl-3', error && 'border-neg')}>
+        <ScanLine className={cx('shrink-0 text-faint', lg ? 'size-5' : 'size-4')} aria-hidden />
         <input
           ref={input}
-          id="omnibox"
+          id={lg ? 'omnibox' : 'omnibox-sm'}
           value={value}
           onChange={(e) => {
             setValue(e.target.value);
@@ -150,7 +109,7 @@ export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm
             setValue(cleanAddress(text));
             void go(text);
           }}
-          placeholder={copy.placeholder}
+          placeholder={lg ? 'Paste a token CA or a wallet…' : 'Paste a CA or wallet'}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
@@ -158,39 +117,36 @@ export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm
           enterKeyHint="go"
           aria-invalid={!!error}
           aria-describedby={error ? 'omnibox-error' : undefined}
-          className={cx('num min-w-0 flex-1 bg-transparent px-1.5 outline-none focus-visible:outline-none placeholder:text-faint', lg ? 'text-[15px]' : 'text-[14px]')}
+          className={cx('mono min-w-0 flex-1 bg-transparent px-2 outline-none focus-visible:outline-none placeholder:font-sans placeholder:text-faint', lg ? 'text-[15px]' : 'text-[13px]')}
         />
+        {lg && kind && !busy && <span className="chip hidden sm:inline-flex">{kind}</span>}
         {busy ? (
-          <span className="grid size-10 place-items-center text-muted">
-            <Loader2 className="size-4 animate-spin" aria-label="Checking" />
+          <span className={cx('flex items-center gap-2 px-3 text-muted', lg ? 'text-[13px]' : 'text-[12px]')}>
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+            {lg && <span className="hidden sm:inline">Reading…</span>}
+            <span className="sr-only">Checking the address</span>
           </span>
         ) : value ? (
           <>
-            <button type="button" onClick={() => setValue('')} className="grid size-9 place-items-center rounded-lg text-faint hover:text-ink" aria-label="Clear">
+            <button type="button" onClick={() => setValue('')} className="grid size-9 shrink-0 place-items-center rounded-md text-faint hover:text-ink" aria-label="Clear">
               <X className="size-4" />
             </button>
-            <button type="submit" className={cx('btn btn-primary min-h-0 px-3', lg ? 'h-12 px-5' : 'h-8')} aria-label="Go">
-              <ArrowRight className="size-4" />
+            <button type="submit" className={cx('btn btn-primary min-h-0 shrink-0', lg ? 'h-12 px-5' : 'h-8 px-2.5')}>
+              {lg && <span className="hidden sm:inline">Pull receipts</span>}
+              <ArrowRight className="size-4" aria-hidden />
+              <span className="sr-only">Go</span>
             </button>
           </>
         ) : (
-          <button type="button" onClick={paste} className={cx('btn btn-primary min-h-0 px-3', lg ? 'h-12 px-5' : 'h-8')}>
+          <button type="button" onClick={paste} className={cx('btn min-h-0 shrink-0', lg ? 'btn-primary h-12 px-5' : 'btn-ink h-8 px-2.5 text-[12.5px]')}>
             <ClipboardPaste className="size-4" aria-hidden />
             Paste
           </button>
         )}
       </div>
       {error && (
-        <p id="omnibox-error" className={cx('mt-2.5 text-[13px] text-neg', lg && 'text-center')} role="alert">
-          {error.text}
-          {error.switchTo && (
-            <>
-              {' '}
-              <button type="button" onClick={() => switchAndGo(error.switchTo!)} className="font-medium underline underline-offset-2">
-                Open it as a token
-              </button>
-            </>
-          )}
+        <p id="omnibox-error" className="mt-2 text-[13px] text-neg" role="alert">
+          {error}
         </p>
       )}
     </form>
