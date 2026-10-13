@@ -70,7 +70,7 @@ export default async function HomePage({ searchParams }: Props) {
           </p>
           <div id="paste" className="reveal mt-8 max-w-xl scroll-mt-24" style={{ '--d': '180ms' } as CSSProperties}>
             <Omnibox />
-            <p className="mt-3 text-[12.5px] text-muted">We work out whether it’s a token or a wallet. No sign-up, no wallet connect.</p>
+            <p className="mt-3 text-[12.5px] text-muted">A token shows who won and who got wrecked; a wallet replays its trades. No sign-up, no wallet connect.</p>
           </div>
           <ul className="reveal mt-8 flex max-w-xl flex-wrap gap-1.5" style={{ '--d': '240ms' } as CSSProperties} aria-label="Supported chains">
             {SUPPORTED.map((c) => (

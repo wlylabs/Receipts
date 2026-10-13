@@ -207,12 +207,8 @@ export interface WalletHoldings {
   kind: 'wallet';
   owner: string;
   holdings: Holding[];
-}
-
-/** GET /api/resolve/[address] */
-export interface Resolved {
-  kind: 'token' | 'wallet';
-  address: string;
+  /** The address is itself a token's CA (it has a DEX pair), so it was most likely pasted as the wrong kind. */
+  token: { symbol: string; address: string } | null;
 }
 
 export interface ApiError {

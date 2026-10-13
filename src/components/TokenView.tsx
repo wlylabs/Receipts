@@ -14,7 +14,7 @@ import { marketOf } from '../lib/market';
 import { traderStory } from '../lib/traderVideo';
 import { marketStory } from '../lib/marketVideo';
 import type { ReplayVideo } from '../lib/replayVideo';
-import { supplyOf } from '../lib/receipts';
+import { isWallet, supplyOf } from '../lib/receipts';
 import { ROUTES } from '../lib/site';
 import { copyText } from '../lib/clipboard';
 import { toast } from '../lib/toast';
@@ -40,7 +40,7 @@ export function TokenView({ ca }: { ca: string }) {
   }, [data, setRecent]);
 
   if (state.status === 'loading') return <Loading what={`Reading ${short(ca)}’s chart and latest trades…`} />;
-  if (state.status === 'error') return <Failure error={state.error} onRetry={reload} />;
+  if (state.status === 'error') return <Failure error={state.error} onRetry={reload} other={isWallet(ca) && state.error.code === 'not-found' ? { label: 'Open it as a wallet', href: ROUTES.wallet(ca) } : undefined} />;
   return <TokenPage r={state.data} />;
 }
 

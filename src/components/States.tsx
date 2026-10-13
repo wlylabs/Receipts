@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Loader2, RotateCw } from 'lucide-react';
+import { ArrowRight, Loader2, RotateCw } from 'lucide-react';
 import type { ApiError } from '../lib/types';
 
 /** A quiet placeholder in the page's own shape while data loads. */
@@ -26,7 +26,11 @@ export function Loading({ what }: { what: string }) {
   );
 }
 
-export function Failure({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
+/**
+ * A page that couldn't load. `other` is the way out when the address may have been pasted as the
+ * wrong kind: a wallet opened as a token, or a token opened as a wallet.
+ */
+export function Failure({ error, onRetry, other }: { error: ApiError; onRetry: () => void; other?: { label: string; href: string } }) {
   const title =
     error.code === 'not-found'
       ? 'Nothing found'
@@ -49,6 +53,11 @@ export function Failure({ error, onRetry }: { error: ApiError; onRetry: () => vo
           <button type="button" onClick={onRetry} className="btn btn-primary">
             <RotateCw className="size-4" aria-hidden /> Try again
           </button>
+        )}
+        {other && error.code !== 'upstream' && error.code !== 'busy' && (
+          <Link href={other.href} className="btn btn-primary">
+            {other.label} <ArrowRight className="size-4" aria-hidden />
+          </Link>
         )}
         <Link href="/#paste" className="btn btn-quiet">
           Try another address

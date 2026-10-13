@@ -76,7 +76,7 @@ Every variable is optional; see [`.env.example`](.env.example).
 ## Layout
 
 ```
-src/app/api/       route handlers: resolve, token, trader, wallet
+src/app/api/       route handlers: token, trader, wallet, pay
 src/lib/upstream   DexScreener + GeckoTerminal
 src/lib/solana     Solana RPC: holdings, moves, swap/transfer reading
 src/lib/evm        Etherscan-style explorers: holdings, moves, swap/transfer reading

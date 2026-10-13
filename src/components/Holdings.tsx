@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, type FormEvent } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import { useApi } from '../hooks/useApi';
@@ -58,6 +59,18 @@ export function Holdings({ address }: { address: string }) {
         </div>
       </header>
 
+      {state.status === 'ready' && state.data.token && (
+        // the address is a token's CA: most likely it was pasted on the Wallet tab by mistake
+        <Link href={ROUTES.token(state.data.token.address)} className="panel mt-5 flex items-center gap-3 border-accent px-4 py-3 hover:bg-hover">
+          <span className="min-w-0 flex-1 text-[13.5px] leading-snug">
+            <span className="font-semibold">This is ${state.data.token.symbol}’s contract address.</span> <span className="text-muted">Meant the token? Open its page instead.</span>
+          </span>
+          <span className="btn btn-primary h-9 min-h-0 shrink-0 px-3 text-[13px]">
+            Open ${state.data.token.symbol} <ArrowRight className="size-4" aria-hidden />
+          </span>
+        </Link>
+      )}
+
       <div className="mt-6 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section className="panel overflow-hidden" aria-labelledby="held">
           <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
@@ -77,7 +90,7 @@ export function Holdings({ address }: { address: string }) {
               ))}
             </ul>
           )}
-          {state.status === 'error' && <Failure error={state.error} onRetry={reload} />}
+          {state.status === 'error' && <Failure error={state.error} onRetry={reload} other={{ label: 'Open it as a token', href: ROUTES.token(address) }} />}
           {state.status === 'ready' &&
             (state.data.holdings.length === 0 ? (
               <p className="px-4 py-8 text-center text-[13.5px] leading-relaxed text-muted">Nothing held right now. Sold out? Paste the token’s CA on the right.</p>

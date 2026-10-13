@@ -2,71 +2,45 @@
 
 import { useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowRight, ClipboardPaste, Loader2, ScanLine, X } from 'lucide-react';
-import { cleanAddress, isAddress, isWallet } from '../lib/receipts';
+import { ArrowRight, ClipboardPaste, X } from 'lucide-react';
+import { cleanAddress } from '../lib/receipts';
+import { MODES, routeFor, type PasteMode } from '../lib/paste';
 import { readClipboard } from '../lib/clipboard';
-import { ROUTES } from '../lib/site';
+import { KEYS } from '../lib/game';
 import { toast } from '../lib/toast';
 import { cx } from '../lib/cx';
-import type { ApiError, Resolved } from '../lib/types';
-
-/** What a pasted string looks like before anything is asked of the network. */
-function family(a: string): string | null {
-  if (!a) return null;
-  if (/^0x[0-9a-fA-F]{40}$/.test(a)) return 'EVM address';
-  if (isWallet(a)) return 'Solana address';
-  if (isAddress(a)) return 'Pool ID';
-  return null;
-}
+import { useStored } from '../hooks/useStored';
 
 /**
- * The paste box. One field for anything: it asks DexScreener whether the address is a token (it
- * has a pair) or a wallet and opens the right page, so nobody has to say which first.
+ * The paste box. It takes what its tab says, a token CA or a wallet, and nothing is guessed: a
+ * token DexScreener hasn't listed yet looks just like a wallet. The pick is remembered, and the
+ * big box and the bar's small one share it.
  */
-export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm'; initial?: string; onGo?: () => void }) {
+export function Omnibox({ size = 'lg', onGo }: { size?: 'lg' | 'sm'; onGo?: () => void }) {
   const router = useRouter();
-  const [value, setValue] = useState(initial);
+  const [stored, setMode] = useStored<PasteMode>(KEYS.pasteMode, 'token');
+  const mode: PasteMode = stored === 'wallet' ? 'wallet' : 'token';
+  const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const m = MODES[mode];
 
-  const go = async (raw: string) => {
-    const a = cleanAddress(raw);
-    if (!a) {
-      setError('Paste a token CA or a wallet address.');
-      input.current?.focus();
-      return;
-    }
-    if (!isAddress(a)) {
-      setError('That doesn’t look like a Solana or 0x address.');
+  const go = (raw: string) => {
+    const r = routeFor(mode, raw);
+    if ('error' in r) {
+      setError(r.error);
       input.current?.focus();
       return;
     }
     setError(null);
-    // a pool ID is never a wallet
-    if (!isWallet(a)) {
-      router.push(ROUTES.token(a));
-      onGo?.();
-      return;
-    }
-    setBusy(true);
-    let to = ROUTES.token(a);
-    try {
-      const res = await fetch(`/api/resolve/${encodeURIComponent(a)}/`);
-      const body = (await res.json()) as Resolved | ApiError;
-      if ('kind' in body) to = body.kind === 'wallet' ? ROUTES.wallet(a) : ROUTES.token(body.address);
-      else if (body.code === 'not-found' || body.code === 'unsupported' || body.code === 'invalid') {
-        setBusy(false);
-        setError(body.error);
-        return;
-      }
-      // busy or upstream down: the token page says itself when there is no pair
-    } catch {
-      // offline or the check failed: open it as a token, which explains itself
-    }
-    router.push(to);
-    setBusy(false);
+    router.push(r.to);
     onGo?.();
+  };
+
+  const pick = (next: PasteMode) => {
+    setMode(next);
+    setError(null);
+    input.current?.focus();
   };
 
   const paste = async () => {
@@ -77,26 +51,53 @@ export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm
       return;
     }
     setValue(cleanAddress(text));
-    void go(text);
+    go(text);
   };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    void go(value);
+    go(value);
   };
 
   const lg = size === 'lg';
-  const kind = family(cleanAddress(value));
+  const id = lg ? 'omnibox' : 'omnibox-sm';
   return (
     <form onSubmit={submit} noValidate role="search">
-      <label htmlFor={lg ? 'omnibox' : 'omnibox-sm'} className="sr-only">
-        Token CA or wallet address
+      {lg && (
+        <div role="radiogroup" aria-label="What you’re pasting" className="mb-2.5 inline-flex rounded-full bg-subtle p-0.5 text-[13px]">
+          {(Object.keys(MODES) as PasteMode[]).map((k) => (
+            <button
+              key={k}
+              type="button"
+              role="radio"
+              aria-checked={mode === k}
+              onClick={() => pick(k)}
+              className={cx('h-9 rounded-full px-4 font-semibold transition-all', mode === k ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-muted hover:text-ink')}
+            >
+              {MODES[k].tab}
+            </button>
+          ))}
+        </div>
+      )}
+      <label htmlFor={id} className="sr-only">
+        {m.tab}
       </label>
-      <div className={cx('field pr-1.5', lg ? 'h-16 pl-4 shadow-[0_3px_0_var(--key-field)]' : 'h-10 pl-3', error && 'border-neg')}>
-        <ScanLine className={cx('shrink-0 text-faint', lg ? 'size-5' : 'size-4')} aria-hidden />
+      <div className={cx('field pr-1.5', lg ? 'h-16 pl-4 shadow-[0_3px_0_var(--key-field)]' : 'h-10 pl-1', error && 'border-neg')}>
+        {!lg && (
+          // the small box flips between the two with one tap
+          <button
+            type="button"
+            onClick={() => pick(mode === 'wallet' ? 'token' : 'wallet')}
+            className="chip h-7 shrink-0 cursor-pointer font-semibold text-ink hover:border-line-strong"
+            aria-label={`Pasting a ${m.tab.toLowerCase()}. Switch to ${mode === 'wallet' ? 'token CA' : 'wallet'}`}
+            title={`Switch to ${mode === 'wallet' ? 'Token CA' : 'Wallet'}`}
+          >
+            {m.short}
+          </button>
+        )}
         <input
           ref={input}
-          id={lg ? 'omnibox' : 'omnibox-sm'}
+          id={id}
           value={value}
           onChange={(e) => {
             setValue(e.target.value);
@@ -107,26 +108,19 @@ export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm
             if (!text) return;
             e.preventDefault();
             setValue(cleanAddress(text));
-            void go(text);
+            go(text);
           }}
-          placeholder={lg ? 'Paste a token CA or a wallet…' : 'Paste a CA or wallet'}
+          placeholder={lg ? m.placeholder : 'Paste…'}
           autoComplete="off"
           autoCorrect="off"
           autoCapitalize="off"
           spellCheck={false}
           enterKeyHint="go"
           aria-invalid={!!error}
-          aria-describedby={error ? 'omnibox-error' : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
           className={cx('mono min-w-0 flex-1 bg-transparent px-2 outline-none focus-visible:outline-none placeholder:font-sans placeholder:text-faint', lg ? 'text-[15px]' : 'text-[13px]')}
         />
-        {lg && kind && !busy && <span className="chip hidden sm:inline-flex">{kind}</span>}
-        {busy ? (
-          <span className={cx('flex items-center gap-2 px-3 text-muted', lg ? 'text-[13px]' : 'text-[12px]')}>
-            <Loader2 className="size-4 animate-spin" aria-hidden />
-            {lg && <span className="hidden sm:inline">Reading…</span>}
-            <span className="sr-only">Checking the address</span>
-          </span>
-        ) : value ? (
+        {value ? (
           <>
             <button type="button" onClick={() => setValue('')} className="grid size-9 shrink-0 place-items-center rounded-md text-faint hover:text-ink" aria-label="Clear">
               <X className="size-4" />
@@ -145,7 +139,7 @@ export function Omnibox({ size = 'lg', initial = '', onGo }: { size?: 'lg' | 'sm
         )}
       </div>
       {error && (
-        <p id="omnibox-error" className="mt-2 text-[13px] text-neg" role="alert">
+        <p id={`${id}-error`} className="mt-2 text-[13px] text-neg" role="alert">
           {error}
         </p>
       )}

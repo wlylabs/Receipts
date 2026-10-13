@@ -24,6 +24,8 @@ export const KEYS = {
   recent: 'receipts:recent',
   /** How charts draw their candles. */
   chartStyle: 'receipts:chart-style',
+  /** Whether the paste box takes a token CA or a wallet. */
+  pasteMode: 'receipts:paste-mode',
   best: (mint: string) => `receipts:best:${mint}`,
 };
 
