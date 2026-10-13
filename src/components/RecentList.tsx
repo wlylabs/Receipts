@@ -42,9 +42,9 @@ export function RecentList({ limit, compact = false, onPick, hideEmpty = false, 
             <Link
               href={hrefOf(r)}
               onClick={onPick}
-              className="group flex items-center gap-3 rounded-[10px] border border-dashed border-line-strong bg-surface/60 px-3.5 py-3 transition-colors hover:border-solid hover:border-ink hover:bg-surface"
+              className="group flex items-center gap-3 rounded-xl border border-line bg-surface/50 px-3.5 py-3 transition-colors duration-200 hover:border-line-strong hover:bg-surface"
             >
-              <span className={cx('chip shrink-0', r.kind === 'trader' && 'border-ink bg-accent text-on-accent')}>{KINDS[r.kind]}</span>
+              <span className={cx('chip shrink-0', r.kind === 'trader' && 'border-accent/40 text-accent-ink')}>{KINDS[r.kind]}</span>
               <span className="mono min-w-0 flex-1 truncate text-[13px] text-ink">{r.label}</span>
               <ArrowUpRight className="size-4 shrink-0 text-faint transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-ink" aria-hidden />
             </Link>

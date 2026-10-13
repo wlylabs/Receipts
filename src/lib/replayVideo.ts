@@ -177,8 +177,8 @@ const onFill = (fill: string) => (fill === INK ? BG : '#ffffff');
 function setPalette(theme: VideoTheme | undefined) {
   ({ bg: BG, ink: INK, muted: MUTED, line: LINE, pos: POS, neg: NEG } = theme === 'dark' ? NIGHT : X_LIGHT);
 }
-const SANS = "'Inter Variable', Inter, ui-sans-serif, system-ui, sans-serif";
-const MONO = "'JetBrains Mono', ui-monospace, Menlo, monospace";
+const SANS = "'Geist Variable', ui-sans-serif, system-ui, sans-serif";
+const MONO = "'Geist Mono Variable', ui-monospace, Menlo, monospace";
 
 const clamp01 = (x: number) => Math.min(1, Math.max(0, x));
 const easeOut = (x: number) => 1 - (1 - clamp01(x)) ** 3;

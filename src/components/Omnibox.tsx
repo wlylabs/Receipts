@@ -64,7 +64,7 @@ export function Omnibox({ size = 'lg', onGo }: { size?: 'lg' | 'sm'; onGo?: () =
   return (
     <form onSubmit={submit} noValidate role="search">
       {lg && (
-        <div role="radiogroup" aria-label="What you’re pasting" className="mb-2.5 inline-flex rounded-full bg-subtle p-0.5 text-[13px]">
+        <div role="radiogroup" aria-label="What you’re pasting" className="mb-3 inline-flex rounded-full border border-line bg-subtle/70 p-0.5 text-[13px]">
           {(Object.keys(MODES) as PasteMode[]).map((k) => (
             <button
               key={k}
@@ -72,7 +72,7 @@ export function Omnibox({ size = 'lg', onGo }: { size?: 'lg' | 'sm'; onGo?: () =
               role="radio"
               aria-checked={mode === k}
               onClick={() => pick(k)}
-              className={cx('h-9 rounded-full px-4 font-semibold transition-all', mode === k ? 'bg-surface text-ink shadow-[0_1px_3px_rgba(0,0,0,0.12)]' : 'text-muted hover:text-ink')}
+              className={cx('h-8 rounded-full px-4 font-medium transition-all duration-200', mode === k ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(0,0,0,0.12),inset_0_0_0_1px_var(--line)]' : 'text-muted hover:text-ink')}
             >
               {MODES[k].tab}
             </button>
@@ -82,7 +82,7 @@ export function Omnibox({ size = 'lg', onGo }: { size?: 'lg' | 'sm'; onGo?: () =
       <label htmlFor={id} className="sr-only">
         {m.tab}
       </label>
-      <div className={cx('field pr-1.5', lg ? 'h-16 pl-4 shadow-[0_3px_0_var(--key-field)]' : 'h-10 pl-1', error && 'border-neg')}>
+      <div className={cx('field pr-1.5', lg ? 'h-16 pl-4 shadow-[var(--shadow),var(--edge)]' : 'h-10 pl-1', error && 'border-neg')}>
         {!lg && (
           // the small box flips between the two with one tap
           <button

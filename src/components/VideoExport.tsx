@@ -169,7 +169,7 @@ function Maker({ video: run, fileBase }: { video: ReplayVideo; fileBase: string 
               aria-checked={on}
               disabled={busy}
               onClick={() => setFormat(f)}
-              className={cx('flex flex-col items-start gap-1.5 rounded-[10px] border px-3 py-2.5 text-left transition-colors', on ? 'border-ink bg-surface shadow-[0_2px_0_var(--ink)]' : 'border-line hover:bg-hover')}
+              className={cx('flex flex-col items-start gap-1.5 rounded-[10px] border px-3 py-2.5 text-left transition-colors', on ? 'border-accent bg-surface shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_18%,transparent)]' : 'border-line hover:bg-hover')}
             >
               <span className={cx('rounded-[3px] border-2', on ? 'border-ink' : 'border-line-strong', f === 'landscape' ? 'h-4 w-7' : f === 'square' ? 'size-5' : 'h-6 w-3.5')} aria-hidden />
               <span className="text-[13px] font-semibold leading-tight">
@@ -286,7 +286,7 @@ function watermark(g: CanvasRenderingContext2D, width: number, height: number) {
   g.translate(width / 2, height / 2);
   g.rotate(-Math.PI / 7);
   const size = Math.round(Math.min(width, height) * 0.075);
-  g.font = `800 ${size}px Inter, system-ui, sans-serif`;
+  g.font = `800 ${size}px 'Geist Variable', system-ui, sans-serif`;
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillStyle = 'rgba(15, 20, 25, 0.10)';

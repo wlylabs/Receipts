@@ -1,94 +1,91 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/inter/index.css';
-@import '@fontsource/jetbrains-mono/latin-400.css';
-@import '@fontsource/jetbrains-mono/latin-500.css';
-@import '@fontsource/jetbrains-mono/latin-700.css';
+@import '@fontsource-variable/geist/index.css';
+@import '@fontsource-variable/geist-mono/index.css';
 
 /*
- * Thermal paper: the app is a till that prints receipts. Warm paper by day, a dark counter at
- * night, ink for text, mono type for every number and label the way a till prints them, dashed
- * rules between lines, and one highlighter yellow for the thing to do next. Green and red only
- * where money moves.
+ * Cinematic, quiet, fast. A neutral stage (Geist's greys, near-black at night, paper white by
+ * day), one warm amber key light from Radix Colors for the thing to do next, and green and red
+ * only where money moves. Depth comes from a soft spotlight and a faint film grain, both pure CSS,
+ * never from blurs, glows or gradients on text. Mono type for every number and label.
  */
 :root {
-  --bg: #f3f1ea;
-  --surface: #fffdf7;
-  --subtle: #ebe8de;
-  --hover: #e5e1d5;
-  --line: #dcd7c9;
-  --line-strong: #c3bdab;
-  --ink: #141311;
-  --ink-2: #3b3934;
-  --muted: #6f6b60;
-  --faint: #a29d8f;
-  --pos: #0f8a45;
-  --pos-wash: #ddf3e4;
-  --neg: #d4302b;
-  --neg-wash: #fbe3e1;
-  --on-ink: #fffdf7;
-  --accent: #ffd426;
-  --on-accent: #141311;
-  /* the hard edge under keys and the paste box */
-  --key: #141311;
-  --key-field: #141311;
-  --dot: rgba(20, 19, 17, 0.07);
-  --shadow: 0 1px 0 rgba(20, 19, 17, 0.04), 0 10px 30px -18px rgba(20, 19, 17, 0.25);
-  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --subtle: #f4f4f2;
+  --hover: #ededeb;
+  --line: #e6e6e3;
+  --line-strong: #d2d2ce;
+  --ink: #0b0b0c;
+  --ink-2: #3d3d42;
+  --muted: #6c6c73;
+  --faint: #a3a3a9;
+  --pos: #12864a;
+  --pos-wash: #e4f5ea;
+  --neg: #d92d2d;
+  --neg-wash: #fce8e8;
+  --on-ink: #ffffff;
+  --accent: #ffb224;
+  --accent-ink: #a35a00;
+  --on-accent: #1d1406;
+  --spot: rgba(255, 178, 36, 0.10);
+  --grain: 0.03;
+  --shadow: 0 1px 2px rgba(11, 11, 12, 0.04), 0 8px 24px -12px rgba(11, 11, 12, 0.12);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.7);
   color-scheme: light;
 }
 
 /* dark follows the system unless the toggle picked a side (data-theme on <html>) */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --bg: #0c0c0b;
-    --surface: #151513;
-    --subtle: #1c1c19;
-    --hover: #23231f;
-    --line: #2a2925;
-    --line-strong: #3a3933;
-    --ink: #f3f1ea;
-    --ink-2: #cfccc2;
-    --muted: #8f8b80;
-    --faint: #5f5c54;
-    --pos: #34d27a;
-    --pos-wash: #0e2117;
-    --neg: #ff5a4f;
-    --neg-wash: #2a1110;
-    --on-ink: #0c0c0b;
-    --accent: #ffd426;
-    --on-accent: #141311;
-    --key: #8a6c00;
-    --key-field: #3a3933;
-    --dot: rgba(243, 241, 234, 0.06);
-    --shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 16px 40px -20px rgba(0, 0, 0, 0.9);
-    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    --bg: #08080a;
+    --surface: #0f0f12;
+    --subtle: #151518;
+    --hover: #1c1c20;
+    --line: #222227;
+    --line-strong: #323238;
+    --ink: #ededef;
+    --ink-2: #b6b6bd;
+    --muted: #87878f;
+    --faint: #55555c;
+    --pos: #3fd18a;
+    --pos-wash: #0c1f16;
+    --neg: #ff5f5a;
+    --neg-wash: #26100f;
+    --on-ink: #08080a;
+    --accent: #ffb224;
+    --accent-ink: #ffc53d;
+    --on-accent: #1d1406;
+    --spot: rgba(255, 178, 36, 0.07);
+    --grain: 0.045;
+    --shadow: 0 1px 0 rgba(0, 0, 0, 0.5), 0 20px 40px -24px rgba(0, 0, 0, 0.9);
+    --edge: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --bg: #0c0c0b;
-  --surface: #151513;
-  --subtle: #1c1c19;
-  --hover: #23231f;
-  --line: #2a2925;
-  --line-strong: #3a3933;
-  --ink: #f3f1ea;
-  --ink-2: #cfccc2;
-  --muted: #8f8b80;
-  --faint: #5f5c54;
-  --pos: #34d27a;
-  --pos-wash: #0e2117;
-  --neg: #ff5a4f;
-  --neg-wash: #2a1110;
-  --on-ink: #0c0c0b;
-  --accent: #ffd426;
-  --on-accent: #141311;
-  --key: #8a6c00;
-  --key-field: #3a3933;
-  --dot: rgba(243, 241, 234, 0.06);
-  --shadow: 0 1px 0 rgba(0, 0, 0, 0.4), 0 16px 40px -20px rgba(0, 0, 0, 0.9);
-  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --bg: #08080a;
+  --surface: #0f0f12;
+  --subtle: #151518;
+  --hover: #1c1c20;
+  --line: #222227;
+  --line-strong: #323238;
+  --ink: #ededef;
+  --ink-2: #b6b6bd;
+  --muted: #87878f;
+  --faint: #55555c;
+  --pos: #3fd18a;
+  --pos-wash: #0c1f16;
+  --neg: #ff5f5a;
+  --neg-wash: #26100f;
+  --on-ink: #08080a;
+  --accent: #ffb224;
+  --accent-ink: #ffc53d;
+  --on-accent: #1d1406;
+  --spot: rgba(255, 178, 36, 0.07);
+  --grain: 0.045;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.5), 0 20px 40px -24px rgba(0, 0, 0, 0.9);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.04);
   color-scheme: dark;
 }
 
@@ -109,9 +106,11 @@
   --color-neg-wash: var(--neg-wash);
   --color-on-ink: var(--on-ink);
   --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
   --color-on-accent: var(--on-accent);
-  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --ease-film: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html {
@@ -120,22 +119,40 @@ html {
 }
 
 body {
-  /* the counter: a faint dot grid, like the squared paper under a till */
+  /* the stage: one soft key light from above, nothing else */
   background:
-    radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 0) 0 0 / 22px 22px,
+    radial-gradient(ellipse 70% 45% at 50% -8%, var(--spot), transparent 70%) no-repeat,
     var(--bg);
   color: var(--ink);
   font-family: var(--font-sans);
-  font-feature-settings: 'cv11', 'ss01';
+  font-feature-settings: 'ss01', 'ss02';
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   min-height: 100dvh;
   overflow-x: hidden;
 }
 
-/* a quiet ink ring for keyboard focus only; in a layer, so an element's outline-none still wins */
+/* film grain: a tiny SVG noise tile over everything, no blend mode so it costs nothing to scroll */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  opacity: var(--grain);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+::selection {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--ink);
+}
+
+/* a quiet ring for keyboard focus only; in a layer, so an element's outline-none still wins */
 @layer base {
   :focus-visible {
-    outline: 2px solid color-mix(in srgb, var(--ink) 30%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
     outline-offset: 2px;
   }
   input:focus-visible,
@@ -147,7 +164,7 @@ body {
 
 .num {
   font-variant-numeric: tabular-nums;
-  font-feature-settings: 'tnum', 'cv11';
+  font-feature-settings: 'tnum';
 }
 
 /* components sit under Tailwind's utilities, so a utility on the element always wins */
@@ -155,23 +172,24 @@ body {
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: var(--shadow), var(--edge);
 }
 
-/* a display line: tight and heavy */
+/* a display line: tight, heavy, a title card */
 .display {
-  font-weight: 700;
-  letter-spacing: -0.045em;
-  line-height: 0.98;
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+  text-wrap: balance;
 }
 
-/* the till's voice: mono, small, upper case; every label and caption on the page */
+/* the voice of every label and caption: mono, small, upper case */
 .label {
   font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -180,7 +198,7 @@ body {
   font-family: var(--font-mono);
   font-size: 10.5px;
   font-weight: 500;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--muted);
 }
@@ -189,33 +207,27 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* a highlighter stroke behind a word */
+/* the key word in a line, lit in amber */
 .mark {
-  background: linear-gradient(transparent 58%, var(--accent) 58%, var(--accent) 92%, transparent 92%);
-  padding: 0 0.08em;
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
+  color: var(--accent-ink);
 }
 
-/* the line a till prints between sections */
+/* a hairline between sections */
 .rule {
   border: 0;
   border-top: 1px dashed var(--line-strong);
 }
 
-/* a numbered step marker */
+/* a numbered step marker: a timecode, not a badge */
 .step {
-  display: inline-grid;
-  place-items: center;
-  min-width: 1.6rem;
-  height: 1.6rem;
-  padding: 0 0.35rem;
-  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font-family: var(--font-mono);
   font-size: 11px;
-  font-weight: 700;
-  background: var(--ink);
-  color: var(--on-ink);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  color: var(--accent-ink);
 }
 
 /* a small tag: chain, dex, side */
@@ -224,10 +236,10 @@ body {
   align-items: center;
   gap: 0.3rem;
   height: 1.5rem;
-  padding: 0 0.5rem;
+  padding: 0 0.55rem;
   border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--subtle);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 60%, transparent);
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
@@ -235,18 +247,21 @@ body {
   white-space: nowrap;
 }
 
+/* things fade up out of soft focus, like a shot coming in */
 @keyframes reveal {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(14px);
+    filter: blur(6px);
   }
   to {
     opacity: 1;
     transform: none;
+    filter: none;
   }
 }
 .reveal {
-  animation: reveal 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: reveal 900ms var(--ease-film) both;
   animation-delay: var(--d, 0ms);
 }
 
@@ -257,52 +272,53 @@ body {
   gap: 0.45rem;
   min-height: 2.5rem;
   padding: 0 0.95rem;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid transparent;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 550;
   letter-spacing: -0.01em;
   white-space: nowrap;
   transition:
-    background-color 120ms ease,
-    border-color 120ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease,
-    transform 80ms ease;
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease,
+    transform 120ms var(--ease-film);
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
 .btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: scale(0.98);
 }
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
-/* the one thing to do next: highlighter yellow, inked edge, a hard little shadow like a key */
+/* the one thing to do next: the amber key light, lit from the top edge */
 .btn-primary {
   background: var(--accent);
   color: var(--on-accent);
-  border-color: var(--key);
-  box-shadow: 0 2px 0 var(--key);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.18);
 }
 .btn-primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 88%, #fff);
-}
-.btn-primary:active:not(:disabled) {
-  box-shadow: 0 1px 0 var(--key);
+  background: color-mix(in srgb, var(--accent) 86%, #fff);
 }
 .btn-ink {
   background: var(--ink);
   color: var(--on-ink);
 }
 .btn-ink:hover:not(:disabled) {
-  opacity: 0.86;
+  opacity: 0.88;
 }
 .btn-quiet {
   background: var(--surface);
   color: var(--ink);
   border-color: var(--line);
+  box-shadow: var(--edge);
 }
 .btn-quiet:hover:not(:disabled) {
   background: var(--hover);
@@ -330,18 +346,48 @@ body {
   gap: 0.25rem;
   border: 1px solid var(--line-strong);
   background: var(--surface);
-  border-radius: 10px;
+  border-radius: 12px;
+  box-shadow: var(--edge);
   transition:
-    border-color 120ms ease,
-    box-shadow 120ms ease;
+    border-color 160ms ease,
+    box-shadow 160ms ease;
 }
 .field:focus-within {
-  border-color: var(--ink);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 55%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 70%, var(--line-strong));
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent),
+    var(--edge);
 }
 /* the field's border and halo already mark focus; the ring inside it is a second, clashing one */
 .field input:focus-visible {
   outline: none;
+}
+
+/* a viewfinder: four corner brackets around a shot, drawn with backgrounds, no extra nodes */
+.frame {
+  --c: var(--line-strong);
+  --l: 14px;
+  position: relative;
+  background:
+    linear-gradient(var(--c), var(--c)) top left / var(--l) 1px,
+    linear-gradient(var(--c), var(--c)) top left / 1px var(--l),
+    linear-gradient(var(--c), var(--c)) top right / var(--l) 1px,
+    linear-gradient(var(--c), var(--c)) top right / 1px var(--l),
+    linear-gradient(var(--c), var(--c)) bottom left / var(--l) 1px,
+    linear-gradient(var(--c), var(--c)) bottom left / 1px var(--l),
+    linear-gradient(var(--c), var(--c)) bottom right / var(--l) 1px,
+    linear-gradient(var(--c), var(--c)) bottom right / 1px var(--l);
+  background-repeat: no-repeat;
+}
+
+/* the recording light */
+@keyframes rec {
+  50% {
+    opacity: 0.25;
+  }
+}
+.rec {
+  animation: rec 1.6s steps(1, end) infinite;
 }
 
 /* a printed receipt: paper, mono type, and a torn zigzag foot */
@@ -362,7 +408,7 @@ body {
 }
 /* a mask cuts its own element's shadow off, so the shadow goes on a wrapper */
 .receipt-shadow {
-  filter: drop-shadow(0 1px 0 var(--line)) drop-shadow(0 14px 24px rgba(0, 0, 0, 0.14));
+  filter: drop-shadow(0 1px 0 var(--line)) drop-shadow(0 24px 32px rgba(0, 0, 0, 0.18));
 }
 
 /* a rubber stamp across a receipt */

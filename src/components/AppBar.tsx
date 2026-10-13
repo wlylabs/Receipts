@@ -12,7 +12,7 @@ import { cx } from '../lib/cx';
 /** The bar over every result: home, the paste box for the next address, and what was looked up last. */
 export function AppBar() {
   return (
-    <header className="sticky top-0 z-30 border-b border-line bg-bg/85 pt-[env(safe-area-inset-top)] backdrop-blur-md">
+    <header className="sticky top-0 z-30 border-b border-line bg-bg/80 pt-[env(safe-area-inset-top)] backdrop-blur-xl backdrop-saturate-150">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 sm:px-6">
         <Wordmark />
         <div className="min-w-0 flex-1 sm:max-w-md md:mx-auto">
@@ -30,10 +30,12 @@ export function AppBar() {
 export function Wordmark({ className, full = false }: { className?: string; full?: boolean }) {
   return (
     <Link href="/" className={cx('flex h-10 shrink-0 items-center gap-2 rounded-md text-ink', className)} aria-label="Receipts, home">
-      <span className="grid size-8 place-items-center rounded-lg bg-accent text-on-accent ring-1 ring-[var(--key)]">
-        <Logo className="size-[18px]" />
+      <span className="grid size-7 place-items-center rounded-[8px] bg-ink text-on-ink">
+        <Logo className="size-4" />
       </span>
-      <span className={cx('text-[17px] font-bold tracking-[-0.04em]', !full && 'hidden sm:inline')}>receipts</span>
+      <span className={cx('text-[16px] font-semibold tracking-[-0.04em]', !full && 'hidden sm:inline')}>
+        receipts<span className="text-accent">.</span>
+      </span>
     </Link>
   );
 }
@@ -60,7 +62,7 @@ function RecentMenu() {
         <span className="hidden md:inline">Recent</span>
       </button>
       {open && (
-        <div className="panel fade-in absolute right-0 top-full z-40 mt-2 w-72 p-2">
+        <div className="panel fade-in absolute right-0 top-full z-40 mt-2 w-72 p-1.5">
           <p className="label px-2 pb-1.5 pt-1">Recent</p>
           <RecentList limit={8} compact onPick={() => setOpen(false)} />
         </div>

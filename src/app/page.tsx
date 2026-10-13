@@ -44,65 +44,84 @@ export default async function HomePage({ searchParams }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-20 pt-[env(safe-area-inset-top)] sm:px-6">
+    <div className="mx-auto max-w-6xl px-4 pb-24 pt-[env(safe-area-inset-top)] sm:px-6">
       <header className="flex h-16 items-center justify-between">
         <Wordmark full />
-        <div className="flex items-center gap-1">
+        <nav className="flex items-center gap-1">
           <a href="#how" className="btn btn-ghost h-9 min-h-0 px-3 text-[13px]">
             How it works
           </a>
           <ThemeToggle className="h-9" />
-        </div>
+        </nav>
       </header>
 
-      <section className="grid items-center gap-12 pb-16 pt-6 sm:pt-12 lg:min-h-[calc(100dvh-8rem)] lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-16 lg:pt-0" aria-labelledby="hero">
-        <div className="min-w-0">
-          <p className="reveal label flex items-center gap-2">
-            <span className="size-1.5 rounded-full bg-pos" aria-hidden /> On-chain P&amp;L, replayed
-          </p>
-          <h1 id="hero" className="display reveal mt-4 text-[46px] sm:text-[72px]" style={{ '--d': '60ms' } as CSSProperties}>
-            Pull the <span className="mark">receipts</span>
-            <br />
-            on any trade.
-          </h1>
-          <p className="reveal mt-5 max-w-xl text-pretty text-[16px] leading-relaxed text-ink-2 sm:text-[18px]" style={{ '--d': '120ms' } as CSSProperties}>
-            Paste a token to see who won and who got wrecked. Paste a wallet to watch its real trades play back on the chart, then keep it as a video.
-          </p>
-          <div id="paste" className="reveal mt-8 max-w-xl scroll-mt-24" style={{ '--d': '180ms' } as CSSProperties}>
-            <Omnibox />
-            <p className="mt-3 text-[12.5px] text-muted">A token shows who won and who got wrecked; a wallet replays its trades. No sign-up, no wallet connect.</p>
-          </div>
-          <ul className="reveal mt-8 flex max-w-xl flex-wrap gap-1.5" style={{ '--d': '240ms' } as CSSProperties} aria-label="Supported chains">
-            {SUPPORTED.map((c) => (
-              <li key={c} className="chip">
-                {c}
-              </li>
-            ))}
-          </ul>
+      {/* the hero is a viewfinder: corner brackets, a recording light and a timecode */}
+      <section className="frame mt-2 px-5 py-14 sm:px-10 sm:py-20 lg:min-h-[calc(100dvh-7rem)] lg:content-center" aria-labelledby="hero">
+        <div className="label pointer-events-none absolute inset-x-5 top-4 flex items-center justify-between sm:inset-x-10" aria-hidden>
+          <span className="flex items-center gap-2">
+            <span className="rec size-1.5 rounded-full bg-neg" /> REC
+          </span>
+          <span className="num">00:00:00:00</span>
         </div>
-        <div className="reveal hidden lg:block" style={{ '--d': '300ms' } as CSSProperties}>
-          <SampleReceipt />
+        <div className="label pointer-events-none absolute inset-x-5 bottom-4 hidden items-center justify-between sm:inset-x-10 sm:flex" aria-hidden>
+          <span>On-chain · No sign-up</span>
+          <span>16:9 · 9:16 · 1:1</span>
+        </div>
+
+        <div className="grid items-center gap-14 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-20">
+          <div className="min-w-0">
+            <p className="reveal label">On-chain P&amp;L, replayed</p>
+            <h1 id="hero" className="display reveal mt-5 text-[44px] sm:text-[76px]" style={{ '--d': '80ms' } as CSSProperties}>
+              Pull the <span className="mark">receipts</span> on any trade.
+            </h1>
+            <p className="reveal mt-6 max-w-lg text-pretty text-[16px] leading-relaxed text-muted sm:text-[17px]" style={{ '--d': '160ms' } as CSSProperties}>
+              Paste a token to see who won and who got wrecked. Paste a wallet to watch its real trades play back on the chart, then keep it as a video.
+            </p>
+            <div id="paste" className="reveal mt-9 max-w-xl scroll-mt-24" style={{ '--d': '240ms' } as CSSProperties}>
+              <Omnibox />
+            </div>
+            <ul className="reveal mt-6 flex max-w-xl flex-wrap gap-1.5" style={{ '--d': '320ms' } as CSSProperties} aria-label="Supported chains">
+              {SUPPORTED.map((c) => (
+                <li key={c} className="chip">
+                  {c}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="reveal hidden lg:block" style={{ '--d': '420ms' } as CSSProperties}>
+            <SampleReceipt />
+          </div>
         </div>
       </section>
 
-      <section id="how" className="scroll-mt-8 border-t border-dashed border-line-strong pt-12" aria-labelledby="how-title">
-        <h2 id="how-title" className="label">
-          How it works
-        </h2>
-        <ol className="mt-5 grid gap-3 md:grid-cols-3">
+      <section id="how" className="scroll-mt-8 pt-24" aria-labelledby="how-title">
+        <div className="flex items-end justify-between gap-6">
+          <h2 id="how-title" className="display text-[32px] sm:text-[44px]">
+            Three takes.
+          </h2>
+          <p className="label hidden sm:block">How it works</p>
+        </div>
+        <ol className="mt-10 grid border-t border-line md:grid-cols-3">
           {STEPS.map((s, i) => (
-            <li key={s.title} className="panel p-5">
-              <span className="step">{String(i + 1).padStart(2, '0')}</span>
-              <h3 className="mt-4 text-[17px] font-semibold tracking-tight">{s.title}</h3>
-              <p className="mt-1.5 text-[14px] leading-relaxed text-muted">{s.body}</p>
+            <li key={s.title} className="border-b border-line py-8 md:border-b-0 md:py-10 md:pr-8 md:[&:not(:first-child)]:border-l md:[&:not(:first-child)]:pl-8">
+              <span className="step">
+                {String(i + 1).padStart(2, '0')} <span className="text-faint">/ 03</span>
+              </span>
+              <h3 className="mt-6 text-[19px] font-semibold tracking-[-0.02em]">{s.title}</h3>
+              <p className="mt-2 text-[14.5px] leading-relaxed text-muted">{s.body}</p>
             </li>
           ))}
         </ol>
       </section>
 
-      <section className="mt-12" aria-label="Recent">
+      <section className="mt-16" aria-label="Recent">
         <RecentList limit={6} hideEmpty title="Pick up where you left off" />
       </section>
+
+      <footer className="label mt-24 flex items-center justify-between border-t border-line pt-6">
+        <span>receipts</span>
+        <span>Free, public data</span>
+      </footer>
     </div>
   );
 }
