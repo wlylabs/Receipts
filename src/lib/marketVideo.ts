@@ -66,6 +66,8 @@ export function marketStory(r: TokenReceipts, now = Date.now() / 1000): { video:
     scale,
     label,
     date: day,
+    // the market's own length: a young token is a quick clip, a long history takes its time
+    paced: true,
   };
   const fileBase = `${token.symbol.toLowerCase().replace(/[^a-z0-9]+/g, '') || 'token'}-market`;
   return { video, fileBase };

@@ -31,10 +31,34 @@ interface Timing {
   play: number;
 }
 
-export const LENGTHS: Record<VideoLength, Timing & { label: string; hint: string }> = {
-  short: { seconds: 9, hook: 0.5, play: 5.6, label: 'Short', hint: '9 s' },
-  story: { seconds: 18, hook: 0.6, play: 13, label: 'Story', hint: '18 s, the run told in its big moments' },
+export const LENGTHS: Record<VideoLength, Timing & { label: string; note: string }> = {
+  short: { seconds: 9, hook: 0.5, play: 5.6, label: 'Short', note: '' },
+  story: { seconds: 18, hook: 0.6, play: 13, label: 'Story', note: ', the run told in its big moments' },
 };
+
+/**
+ * For a paced video: candles a second the replay runs at, and the shortest and longest the replay
+ * may take, so a young token isn't over in a blink and a long history still fits a clip.
+ */
+const PACE: Record<VideoLength, { rate: number; min: number; max: number }> = {
+  short: { rate: 10, min: 2.5, max: 9 },
+  story: { rate: 5, min: 5, max: 20 },
+};
+
+/**
+ * The video's beats in seconds. A paced run plays its candles at a steady rate, so the video is as
+ * long as the run is; any other run fits the length's fixed seconds.
+ */
+export function timingOf(l: VideoLength, v?: Run): Timing {
+  const T = LENGTHS[l];
+  const n = v?.paced ? (v.candles?.length ?? 0) : 0;
+  if (!n) return T;
+  const P = PACE[l];
+  const play = T.hook + Math.min(P.max, Math.max(P.min, n / P.rate));
+  // whole frames, so the export and the preview agree on the length
+  const seconds = Math.round((play + T.seconds - T.play) * FPS) / FPS;
+  return { seconds, hook: T.hook, play };
+}
 
 export const FPS = 30;
 
@@ -78,6 +102,8 @@ export interface ReplayVideo {
   money: (n: number) => string;
   /** What the axis shows instead of price, e.g. market cap: price times `scale`. */
   scale: number;
+  /** Run the candles at a steady pace, the video as long as the run, instead of fitting the length's fixed seconds. */
+  paced?: boolean;
   /** Formats an axis value (already scaled). */
   label: (n: number) => string;
   date: (ts: number) => string;
@@ -99,7 +125,7 @@ const easeBack = (x: number) => {
 };
 
 /** What the timing needs of a run: its stretch and, for the slow motion, its trades. */
-type Run = Pick<ReplayVideo, 'from' | 'to'> & { markers?: readonly Marker[] };
+type Run = Pick<ReplayVideo, 'from' | 'to'> & Partial<Pick<ReplayVideo, 'candles' | 'paced'>> & { markers?: readonly Marker[] };
 
 /** How much slower the replay runs right on a trade, and over how much of the run it eases back. */
 const SLOW = 2.4;
@@ -151,7 +177,7 @@ function warp(x: number, table: Float64Array | null): number {
  * read; given the run, the replay slows down as it reaches each trade.
  */
 export function playAt(time: number, l: VideoLength = 'short', v?: Run): number {
-  const T = LENGTHS[l];
+  const T = timingOf(l, v);
   const x = (time - T.hook) / (T.play - T.hook);
   const eased = l === 'story' ? clamp01(x) * 0.5 + easeInOut(x) * 0.5 : easeInOut(x);
   return v ? warp(eased, warpTable(v)) : eased;
@@ -159,7 +185,7 @@ export function playAt(time: number, l: VideoLength = 'short', v?: Run): number 
 
 /** The time in the video at which the playhead reaches a timestamp of the run. */
 export function timeOf(ts: number, v: Run, l: VideoLength): number {
-  const T = LENGTHS[l];
+  const T = timingOf(l, v);
   const target = (ts - v.from) / Math.max(1, v.to - v.from);
   let lo = T.hook;
   let hi = T.play;
@@ -269,8 +295,8 @@ function followView(v: ReplayVideo, full: View, head: number, wide = 1): View {
 }
 
 /** How close the camera is, 1 (on the playhead) to 0 (the whole chart): it pulls back out at the end of the replay. */
-export function zoomAt(time: number, l: VideoLength = 'short'): number {
-  const T = LENGTHS[l];
+export function zoomAt(time: number, l: VideoLength = 'short', v?: Run): number {
+  const T = timingOf(l, v);
   return 1 - easeInOut((time - (T.play - 1)) / 1);
 }
 
@@ -280,9 +306,9 @@ export function zoomAt(time: number, l: VideoLength = 'short'): number {
  * new high comes in or an old candle leaves.
  */
 function cameraAt(v: ReplayVideo, full: View, time: number, l: VideoLength): View {
-  const z = zoomAt(time, l);
+  const z = zoomAt(time, l, v);
   if (z <= 0) return full;
-  const T = LENGTHS[l];
+  const T = timingOf(l, v);
   // a slow push in over the opening
   const wide = 1 + 0.3 * (1 - easeInOut(time / (T.hook + 1)));
   const n = 8;
@@ -329,7 +355,7 @@ export function drawFrame(g: CanvasRenderingContext2D, time: number, v: ReplayVi
 }
 
 function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f: VideoFormat, l: VideoLength, alpha: number) {
-  const T = LENGTHS[l];
+  const T = timingOf(l, v);
   const L = layout(f);
   const { W, H, pad } = L;
   const geo = geometry(v, L, cameraAt(v, fullView(v), time, l));
@@ -558,7 +584,7 @@ function drawMarker(g: CanvasRenderingContext2D, x: number, y: number, m: Marker
 
 /** The sound track's cues: where each blip, tick and chord lands. */
 export function soundCues(v: ReplayVideo, l: VideoLength): Cue[] {
-  const T = LENGTHS[l];
+  const T = timingOf(l, v);
   const geo = geometry(v, layout('square'));
   const cues: Cue[] = [{ t: 0.02, kind: 'hook' }];
   // a tick each time the price steps onto another note, like a ratchet, so a fast move ticks
@@ -600,14 +626,14 @@ export async function renderReplayVideo(
   onProgress: (p: number) => void = () => {},
 ): Promise<RenderedVideo> {
   const { width, height } = FORMATS[f];
-  const { seconds } = LENGTHS[l];
+  const { seconds } = timingOf(l, v);
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const g = canvas.getContext('2d');
   if (!g) throw new Error('no canvas');
   await loadFonts();
-  const frames = FPS * seconds;
+  const frames = Math.round(FPS * seconds);
   const audio = opts.sound && typeof OfflineAudioContext !== 'undefined' ? await renderSound(soundCues(v, l), seconds).catch(() => null) : null;
 
   const mb = await import('mediabunny').catch(() => null);
@@ -648,7 +674,7 @@ async function recordInRealTime(canvas: HTMLCanvasElement, g: CanvasRenderingCon
   if (typeof MediaRecorder === 'undefined' || !canvas.captureStream) throw new Error('no video support');
   const type = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m));
   if (!type) throw new Error('no video support');
-  const { seconds } = LENGTHS[l];
+  const { seconds } = timingOf(l, v);
   const stream = canvas.captureStream(FPS);
   const recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8_000_000 });
   const chunks: Blob[] = [];

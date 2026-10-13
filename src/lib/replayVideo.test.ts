@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { LENGTHS, playAt, soundCues, timeOf, zoomAt, type ReplayVideo } from './replayVideo';
+import { LENGTHS, playAt, soundCues, timeOf, timingOf, zoomAt, type ReplayVideo } from './replayVideo';
+import type { Candle } from './candles';
 
 describe('replay video timing', () => {
   for (const l of ['short', 'story'] as const) {
@@ -64,6 +65,27 @@ describe('replay video sound', () => {
       const climb = ticks.filter((t) => t < half).length / (half - T.hook);
       const flat = ticks.filter((t) => t > half).length / (T.play - half);
       expect(climb).toBeGreaterThan(flat);
+    });
+  }
+});
+
+describe('paced replay video', () => {
+  const run = (n: number) => ({ from: 0, to: n * 60, paced: true, candles: Array.from({ length: n }, (_, i) => [i * 60, 1, 1, 1, 1] as Candle) });
+  for (const l of ['short', 'story'] as const) {
+    it(`${l}: runs the candles at a steady pace, so a longer market makes a longer video`, () => {
+      const few = timingOf(l, run(30));
+      const many = timingOf(l, run(60));
+      expect(many.play - many.hook).toBeCloseTo(2 * (few.play - few.hook), 5);
+      expect(many.seconds).toBeGreaterThan(few.seconds);
+      expect(playAt(many.play, l, run(60))).toBe(1);
+      expect(zoomAt(many.play, l, run(60))).toBe(0);
+    });
+    it(`${l}: keeps a tiny market watchable and a huge one a clip`, () => {
+      expect(timingOf(l, run(2)).play - LENGTHS[l].hook).toBeGreaterThanOrEqual(2.5);
+      expect(timingOf(l, run(10_000)).seconds).toBeLessThan(30);
+    });
+    it(`${l}: a run that isn't paced keeps the fixed length`, () => {
+      expect(timingOf(l, { ...run(60), paced: false })).toEqual(LENGTHS[l]);
     });
   }
 });
