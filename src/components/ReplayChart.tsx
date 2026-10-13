@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { bucket, candleAt, logTicks, range, upTo, type Candle } from '../lib/candles';
 import { cx } from '../lib/cx';
-import { COLORS, shape } from '../lib/chartStyle';
+import { paletteOf, shape } from '../lib/chartStyle';
 import { useChartStyle } from '../hooks/useChartStyle';
 
 export interface Marker {
@@ -101,7 +101,7 @@ export function ReplayChart({
   const shown = upTo(candles, step, playhead);
   // drawn in the picked shape; the price tag keeps the real last price
   const drawn = shape(shown, style.kind);
-  const palette = COLORS[style.colors];
+  const palette = paletteOf(style);
   const live = head !== undefined && head < runTo;
   const color = tone === 'pos' ? 'var(--pos)' : tone === 'neg' ? 'var(--neg)' : 'var(--ink)';
   const now = shown.at(-1)?.[4] ?? candles[0]![4];

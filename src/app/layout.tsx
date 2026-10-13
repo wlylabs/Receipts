@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import type { ReactNode } from 'react';
-import { AppNav } from '../components/AppNav';
 import { Toaster } from '../components/Toaster';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from '../lib/site';
 import './globals.css';
@@ -35,12 +34,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-ink focus:px-3 focus:py-2 focus:text-on-ink">
           Skip to content
         </a>
-        <div className="flex min-h-dvh flex-col pb-[calc(4rem+env(safe-area-inset-bottom))] sm:pb-0 lg:pl-64">
-          <AppNav />
-          <main id="main" className="flex-1">
-            {children}
-          </main>
-        </div>
+        <main id="main" className="min-h-dvh pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)]">
+          {children}
+        </main>
         <Toaster />
       </body>
     </html>

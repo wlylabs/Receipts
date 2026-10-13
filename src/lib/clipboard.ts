@@ -46,13 +46,13 @@ export async function shareLink(url: string, title: string, text: string): Promi
 }
 
 /** Hands a file to the share sheet on phones (so it can go to the gallery or a chat), else downloads it. */
-export async function saveFile(file: File): Promise<'shared' | 'saved'> {
+export async function saveFile(file: File): Promise<'shared' | 'saved' | 'cancelled'> {
   if (isTouch() && navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file] });
       return 'shared';
     } catch (e) {
-      if ((e as Error).name === 'AbortError') return 'shared';
+      if ((e as Error).name === 'AbortError') return 'cancelled';
     }
   }
   const url = URL.createObjectURL(file);

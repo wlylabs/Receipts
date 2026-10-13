@@ -1,7 +1,7 @@
 import type { Marker } from '../components/ReplayChart';
 import { renderSound, SAMPLE_RATE, tickStep, type Cue } from './videoSound';
 import { X_LIGHT } from './palette';
-import { COLORS, DEFAULT_STYLE, shape, type ChartStyle } from './chartStyle';
+import { DEFAULT_STYLE, paletteOf, shape, type ChartStyle } from './chartStyle';
 import { candleAt, drawCandles, logTicks, range, upTo, type Candle } from './candles';
 
 /**
@@ -32,9 +32,9 @@ interface Timing {
   play: number;
 }
 
-export const LENGTHS: Record<VideoLength, Timing & { label: string; note: string }> = {
-  short: { seconds: 9, hook: 0.5, play: 5.6, label: 'Short', note: '' },
-  story: { seconds: 18, hook: 0.6, play: 13, label: 'Story', note: ', the run told in its big moments' },
+export const LENGTHS: Record<VideoLength, Timing & { label: string }> = {
+  short: { seconds: 9, hook: 0.5, play: 5.6, label: 'Short' },
+  story: { seconds: 18, hook: 0.6, play: 13, label: 'Story' },
 };
 
 /**
@@ -480,7 +480,7 @@ function drawScene(g: CanvasRenderingContext2D, time: number, v: ReplayVideo, f:
     g.translate(-fx, -fy);
   }
   const style = v.candleStyle ?? DEFAULT_STYLE;
-  drawCandles(g, shape(shown, style.kind), v.step, geo.X, geo.Y, { up: COLORS[style.colors].videoUp, down: COLORS[style.colors].videoDown, body: 0.68 });
+  drawCandles(g, shape(shown, style.kind), v.step, geo.X, geo.Y, { up: paletteOf(style).videoUp, down: paletteOf(style).videoDown, body: 0.68 });
 
   // trades pop as the playhead reaches them, buys under their candle and sells over it
   if (playing) {
